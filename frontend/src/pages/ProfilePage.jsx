@@ -556,6 +556,7 @@ const ProfilePage = () => {
         ================================================== */}
 
         <div
+          className="profile-hero"
           style={{
             background:
               "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #0f766e 100%)",
@@ -572,6 +573,7 @@ const ProfilePage = () => {
           }}
         >
           <div
+            className="profile-hero-inner"
             style={{
               minHeight: 160,
               display: "flex",
@@ -584,6 +586,7 @@ const ProfilePage = () => {
             {/* Profile picture */}
 
             <div
+              className="profile-hero-avatar"
               style={{
                 position: "relative",
                 width: 100,
@@ -669,6 +672,7 @@ const ProfilePage = () => {
             {/* User information */}
 
             <div
+              className="profile-hero-info"
               style={{
                 minWidth: 0,
                 flex: 1,
@@ -693,6 +697,7 @@ const ProfilePage = () => {
               </h1>
 
               <div
+                className="profile-hero-email"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -711,6 +716,7 @@ const ProfilePage = () => {
                   the Remove Photo button appears. */}
 
               <div
+                className="profile-hero-actions"
                 style={{
                   display: "flex",
                   alignItems: "center",

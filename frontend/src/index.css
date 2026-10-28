@@ -3783,7 +3783,6 @@ button:disabled {
   }
 }
 
-
 /* Topbar search — refined visual styling */
 .topbar-search {
   border: 1px solid var(--color-line);
@@ -3828,7 +3827,7 @@ button:disabled {
 .topbar-right > div > div {
   border-color: var(--color-line);
   box-shadow:
-    0 12px 32px rgba(15, 23, 42, 0.10),
+    0 12px 32px rgba(15, 23, 42, 0.1),
     0 2px 6px rgba(15, 23, 42, 0.04);
 }
 
@@ -3838,5 +3837,125 @@ button:disabled {
   .topbar-icon-button,
   .topbar-profile {
     transition: none !important;
+  }
+}
+
+/* Responsive profile hero */
+.profile-hero,
+.profile-hero * {
+  box-sizing: border-box;
+}
+
+.profile-hero {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.profile-hero-inner {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 4vw, 28px);
+  width: 100%;
+  min-width: 0;
+}
+
+.profile-hero-avatar {
+  flex: 0 0 100px;
+}
+
+.profile-hero-info {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profile-hero-info h1 {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.profile-hero-email {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profile-hero-email svg {
+  flex-shrink: 0;
+}
+
+.profile-hero-email span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.profile-hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Phones and narrow screens */
+@media (max-width: 600px) {
+  .profile-hero {
+    padding: clamp(14px, 4vw, 22px) !important;
+    min-height: 0 !important;
+  }
+
+  .profile-hero-inner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 18px !important;
+    min-height: 0 !important;
+  }
+
+  .profile-hero-avatar {
+    width: 84px;
+    height: 84px;
+    min-width: 0 !important;
+    flex-basis: auto;
+  }
+
+  .profile-hero-info {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .profile-hero-info h1 {
+    font-size: clamp(24px, 6vw, 32px) !important;
+    line-height: 1.2 !important;
+  }
+
+  .profile-hero-email {
+    font-size: clamp(13px, 3.8vw, 16px) !important;
+    line-height: 1.5;
+  }
+
+  .profile-hero-actions {
+    gap: 8px !important;
+  }
+}
+
+/* Extra-small phones */
+@media (max-width: 360px) {
+  .profile-hero {
+    padding: 12px !important;
+  }
+
+  .profile-hero-avatar {
+    width: 72px;
+    height: 72px;
+  }
+
+  .profile-hero-actions > * {
+    max-width: 100%;
   }
 }
