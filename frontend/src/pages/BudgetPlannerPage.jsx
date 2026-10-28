@@ -85,6 +85,10 @@ export default function BudgetPlannerPage() {
   const [category, setCategory] = useState("");
 
   const [limit, setLimit] = useState("");
+  const [budgetMonth, setBudgetMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -1185,6 +1189,36 @@ export default function BudgetPlannerPage() {
               required
             />
           </div>
+
+          {/* Budget Month */}
+          <div style={{ marginBottom: 14 }}>
+            <label
+              htmlFor="budgetMonth"
+              style={{ display: "block", marginBottom: 6 }}
+            >
+              Budget Month
+            </label>
+
+            <input
+              id="budgetMonth"
+              type="month"
+              value={budgetMonth}
+              min={`${new Date().getFullYear()}-${String(
+                new Date().getMonth() + 1,
+              ).padStart(2, "0")}`}
+              onChange={(e) => setBudgetMonth(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Existing Set Budget Button */}
+          <button
+            className="btn btn-accent"
+            type="submit"
+            disabled={submitting}
+          >
+            {submitting ? "Saving..." : "Set budget"}
+          </button>
 
           <button
             className="btn btn-accent"
