@@ -91,12 +91,12 @@ def send_verification_otp(
             detail="Please wait 60 seconds before requesting another code.",
         )
 
-    if not settings.SMTP_USERNAME or not settings.SMTP_PASSWORD:
-        logger.error("SMTP credentials are not configured")
+    if not os.getenv("BREVO_API_KEY"):
+        logger.error("Brevo API key is not configured")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email verification is temporarily unavailable.",
-        )
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Email verification is temporarily unavailable.",
+    )
 
     otp = f"{secrets.randbelow(1_000_000):06d}"
     safe_name = html.escape(user.name or "there")
