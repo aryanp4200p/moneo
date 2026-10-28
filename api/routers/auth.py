@@ -807,6 +807,88 @@ def login_for_swagger(
 
 # Forgot Password
 
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Send a password-reset link without revealing whether an account exists."""
+    generic_response = {
+        "success": True,
+        "message": (
+            "If an account exists for this email, "
+            "a password reset link will be sent."
+        ),
+    }
+
+    email = str(payload.email).strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    if user is None:
+        logger.info("Password reset requested for an unregistered email")
+        return generic_response
+
+    raw_token = generate_password_reset_token()
+    user.password_reset_token_hash = hash_reset_token(raw_token)
+    user.password_reset_expires_at = create_password_reset_expiry()
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to save password reset token")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process the password reset request.",
+        )
+
+    reset_url = (
+        f"{settings.FRONTEND_URL.rstrip('/')}"
+        f"/reset-password?token={raw_token}"
+    )
+
+    safe_name = html.escape(user.name or "there")
+    safe_url = html.escape(reset_url, quote=True)
+
+    email_html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#222">
+        <h2>Reset your Moneo password</h2>
+        <p>Hello {safe_name},</p>
+        <p>Click the button below to choose a new password.</p>
+        <p>
+            <a href="{safe_url}"
+               style="display:inline-block;padding:12px 20px;
+                      background:#6d4aff;color:white;
+                      text-decoration:none;border-radius:6px">
+                Reset Password
+            </a>
+        </p>
+        <p>If the button doesn't work, open the link below:</p>
+        <p><a href="{safe_url}">Reset your password</a></p>
+        <p>If you did not request this, you can ignore this email.</p>
+    </div>
+    """
+
+    try:
+        send_email(
+            to_email=user.email,
+            subject="Reset your Moneo password",
+            html_body=email_html,
+        )
+    except Exception:
+        user.password_reset_token_hash = None
+        user.password_reset_expires_at = None
+        db.commit()
+        logger.exception("Password reset email delivery failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to send the password reset email. Please try again.",
+        )
+
+    logger.info("Password reset email accepted for delivery")
+    return generic_response
+
 # ==========================================================
 
 
