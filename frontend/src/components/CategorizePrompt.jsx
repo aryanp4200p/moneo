@@ -80,7 +80,10 @@ export default function CategorizePrompt() {
       )}
 
       {pending.map((txn) => {
-        const isIncome = txn.type === "income";
+        const isIncome =
+          String(txn.type || "")
+            .trim()
+            .toLowerCase() === "income";
         const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
         return (
