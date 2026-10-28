@@ -327,6 +327,7 @@ def register(
     payload: UserRegister,
     db: Session = Depends(get_db),
 ):
+    print("=== FORGOT PASSWORD ENDPOINT REACHED ===", flush=True)
     email = str(payload.email).strip().lower()
     existing = db.query(User).filter(User.email == email).first()
 
