@@ -277,36 +277,35 @@ async def preview_receipt(
     )
 
     try:
-        with Image.open(io.BytesIO(raw)) as original:
-            if (original.format or "").upper() not in ALLOWED_IMAGE_FORMATS:
-                raise HTTPException(status_code=400, detail="Unsupported image format.")
-            original.verify()
-
+        
         with Image.open(io.BytesIO(raw)) as original:
             image = ImageOps.exif_transpose(original).convert("RGB")
-            if max(image.size) > 2500:
-                image.thumbnail((2500, 2500))
 
+            # Resize large images without enlarging them again.
+            image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+
+            # Enhance receipt readability while keeping processing efficient.
             image = ImageOps.grayscale(image)
-            image = image.resize((image.width * 2, image.height * 2))
-            image = ImageEnhance.Contrast(image).enhance(2.0)
-            image = ImageEnhance.Sharpness(image).enhance(2.0)
-            image = image.filter(ImageFilter.SHARPEN)
+            image = ImageEnhance.Contrast(image).enhance(1.8)
+            image = ImageEnhance.Sharpness(image).enhance(1.5)
 
             extracted_text = pytesseract.image_to_string(
                 image,
                 config="--oem 3 --psm 6",
-                timeout=20,
+                timeout=30,
             ).strip()
 
+            # Retry only when the first OCR result is too short.
             if len(extracted_text) < 20:
                 retry_text = pytesseract.image_to_string(
                     image,
                     config="--oem 3 --psm 11",
-                    timeout=20,
+                    timeout=10,
                 ).strip()
+
                 if len(retry_text) > len(extracted_text):
                     extracted_text = retry_text
+
 
     except HTTPException:
         raise
