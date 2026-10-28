@@ -59,6 +59,7 @@ def create_budget(
 
     if existing:
         existing.monthly_limit = payload.monthly_limit
+        existing.budget_month = payload.budget_month
 
         db.commit()
         db.refresh(existing)
@@ -69,6 +70,7 @@ def create_budget(
         user_id=current_user.id,
         category=payload.category.strip(),
         monthly_limit=payload.monthly_limit,
+        budget_month=payload.budget_month,
     )
 
     db.add(budget)
