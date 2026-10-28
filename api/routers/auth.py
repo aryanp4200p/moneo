@@ -327,7 +327,7 @@ def register(
     payload: UserRegister,
     db: Session = Depends(get_db),
 ):
-    print("=== FORGOT PASSWORD ENDPOINT REACHED ===", flush=True)
+    
     email = str(payload.email).strip().lower()
     existing = db.query(User).filter(User.email == email).first()
 
@@ -809,218 +809,86 @@ def login_for_swagger(
 
 # ==========================================================
 
-@router.post("/forgot-password")
-def forgot_password(
-    payload: ForgotPasswordRequest,
-    db: Session = Depends(get_db),
-):
-    """Email a time-limited password-reset link without revealing account existence."""
-    generic_response = {
-        "success": True,
-        "message": "If an account exists for this email, a password reset link will be sent.",
-    }
-
-    email = str(payload.email).strip().lower()
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        logger.info("Password reset requested for an unregistered email")
-        return generic_response
-
-    logger.info("Password reset account found; attempting email delivery")
-
-    raw_token = generate_password_reset_token()
-    user.password_reset_token_hash = hash_reset_token(raw_token)
-    user.password_reset_expires_at = create_password_reset_expiry()
-    db.commit()
-
-    reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={raw_token}"
-    safe_name = html.escape(user.name or "there")
-    safe_url = html.escape(reset_url, quote=True)
-    email_html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#222">
-      <h2>Reset your Moneo password</h2>
-      <p>Hello {safe_name},</p>
-      <p>We received a request to reset your Moneo password.</p>
-      <p><a href="{safe_url}" style="display:inline-block;padding:12px 20px;
-          background:#166b57;color:#fff;text-decoration:none;border-radius:6px">
-          Reset password</a></p>
-      <p>If the button doesn't work, copy this link into your browser:</p>
-      <p><a href="{safe_url}">{safe_url}</a></p>
-      <p>This link expires soon. If you didn't request a reset, you can ignore this email.</p>
-    </div>
-    """
-
-    try:
-        send_email(
-            to_email=user.email,
-            subject="Reset your Moneo password",
-            html_body=email_html,
-        )
-    except Exception:
-        # Invalidate the token if it could not be delivered.
-        user.password_reset_token_hash = None
-        user.password_reset_expires_at = None
-        db.commit()
-        logger.exception("Password reset email delivery failed for user id %s", user.id)
-        # Keep the response generic to prevent account enumeration.
-
-    return generic_response
 
 @router.post("/reset-password")
-
 def reset_password(
-
     payload: ResetPasswordRequest,
-
     db: Session = Depends(get_db),
-
 ):
+    """Reset password using a valid, unexpired reset token."""
 
-    """
-
-    Reset password using a valid, unexpired reset token.
-
-    """
-
-    token_hash = hash_reset_token(
-
-        payload.token
-
-    )
+    token_hash = hash_reset_token(payload.token)
 
     user = (
-
         db.query(User)
-
-        .filter(
-
-            User.password_reset_token_hash
-
-            == token_hash
-
-        )
-
+        .filter(User.password_reset_token_hash == token_hash)
         .first()
-
     )
 
-    # ------------------------------------------------------
-
-    # Invalid token
-
-    # ------------------------------------------------------
-
+    # Diagnostic: never log the actual token or its hash.
     if user is None:
-
+        logger.warning(
+            "Password reset rejected: token hash did not match any user"
+        )
         raise HTTPException(
-
-            status_code=400,
-
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired password reset token.",
-
         )
 
-    # ------------------------------------------------------
-
-    # Expired token
-
-    # ------------------------------------------------------
+    logger.info("Password reset token matched a user")
 
     if is_reset_token_expired(user):
-
-        # Clean up expired token.
+        logger.warning("Password reset rejected: token expired")
 
         user.password_reset_token_hash = None
-
         user.password_reset_expires_at = None
-
         db.commit()
 
         raise HTTPException(
-
-            status_code=400,
-
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired password reset token.",
-
         )
 
-    # ------------------------------------------------------
+    # Update password.
+    user.hashed_password = hash_password(payload.new_password)
 
-    # Update password
-
-    # ------------------------------------------------------
-
-    user.hashed_password = hash_password(
-
-        payload.new_password
-
-    )
-
-    # ------------------------------------------------------
-
-    # Reset login security state
-
-    # ------------------------------------------------------
-
+    # Reset login security state.
     user.failed_login_attempts = 0
-
     user.locked_until = None
 
-    # ------------------------------------------------------
-
-    # Invalidate reset token
-
-    # ------------------------------------------------------
-
+    # Invalidate the token so it cannot be reused.
     user.password_reset_token_hash = None
-
     user.password_reset_expires_at = None
 
-    # ------------------------------------------------------
-
-    # Revoke ALL existing sessions
-
-    #
-
-    # This forces the user to log in again everywhere
-
-    # after a password reset.
-
-    # ------------------------------------------------------
-
+    # Revoke all active sessions after a password reset.
     db.query(UserSession).filter(
-
         UserSession.user_id == user.id,
-
         UserSession.is_active.is_(True),
-
     ).update(
-
-        {
-
-            UserSession.is_active: False,
-
-        },
-
+        {UserSession.is_active: False},
         synchronize_session=False,
-
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to save password reset for user")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to reset your password. Please try again.",
+        )
+
+    logger.info("Password reset completed successfully")
 
     return {
-
         "success": True,
-
         "message": (
-
             "Password reset successfully. "
-
             "Please log in with your new password."
-
         ),
-
     }
+
 
 # ==========================================================
 
