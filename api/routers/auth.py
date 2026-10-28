@@ -823,7 +823,8 @@ def forgot_password(
     user = db.query(User).filter(User.email == email).first()
     if user is None:
         return generic_response
-
+    logger.info("Password reset account found; attempting email delivery")
+    
     raw_token = generate_password_reset_token()
     user.password_reset_token_hash = hash_reset_token(raw_token)
     user.password_reset_expires_at = create_password_reset_expiry()
