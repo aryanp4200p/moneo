@@ -303,6 +303,37 @@ export default function BudgetPlannerPage() {
     return item.monthly_limit ?? item.budget ?? item.budget_limit ?? 0;
   };
 
+  const getCurrentCategorySpend = (categoryName) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const targetCategory = String(categoryName || "")
+      .trim()
+      .toLowerCase();
+
+    return transactions.reduce((total, transaction) => {
+      if (transaction.type !== "expense" || !transaction.date) return total;
+
+      const parts = String(transaction.date).split("-").map(Number);
+      if (parts.length !== 3) return total;
+
+      const [year, month] = parts;
+      if (year !== currentYear || month !== currentMonth) return total;
+
+      const transactionCategory = String(
+        transaction.category ||
+          transaction.expense_category ||
+          transaction.category_name ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+
+      if (transactionCategory !== targetCategory) return total;
+      return total + Number(transaction.amount || 0);
+    }, 0);
+  };
+
   const getExpectedExcess = (item) => {
     const directValue =
       item.expected_excess ?? item.excess ?? item.amount_over_budget;
@@ -960,8 +991,14 @@ export default function BudgetPlannerPage() {
               const budget = getBudgetAmount(item);
 
               const excess = getExpectedExcess(item);
-
-              const risk = isPredictionRisk(item);
+              const currentSpent = getCurrentCategorySpend(categoryName);
+              const alreadyOverBudget = currentSpent > budget;
+              const risk = alreadyOverBudget || isPredictionRisk(item);
+              const statusMessage = alreadyOverBudget
+                ? `⚠ Budget exceeded by ${formatMoney(currentSpent - budget)}`
+                : risk
+                  ? "⚠ Likely to exceed budget"
+                  : "✓ Currently on track";
 
               return (
                 <div
@@ -1053,7 +1090,7 @@ export default function BudgetPlannerPage() {
                           color: "var(--color-alert)",
                         }}
                       >
-                        <span>Expected excess</span>
+                        <span>Projected excess</span>
 
                         <strong>{formatMoney(excess)}</strong>
                       </div>
@@ -1070,9 +1107,7 @@ export default function BudgetPlannerPage() {
                         : "var(--color-accent)",
                     }}
                   >
-                    {risk
-                      ? "⚠ Likely to exceed budget"
-                      : "✓ Currently on track"}
+                    {statusMessage}
                   </div>
                 </div>
               );
@@ -1201,6 +1236,7 @@ export default function BudgetPlannerPage() {
 
             <input
               id="budgetMonth"
+              className="input"
               type="month"
               value={budgetMonth}
               min={`${new Date().getFullYear()}-${String(
@@ -1212,14 +1248,6 @@ export default function BudgetPlannerPage() {
           </div>
 
           {/* Existing Set Budget Button */}
-          <button
-            className="btn btn-accent"
-            type="submit"
-            disabled={submitting}
-          >
-            {submitting ? "Saving..." : "Set budget"}
-          </button>
-
           <button
             className="btn btn-accent"
             type="submit"
