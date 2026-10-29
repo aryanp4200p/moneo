@@ -386,7 +386,15 @@ export default function Navbar() {
             />
 
             <div>
-              <strong>Moneo</strong>
+              <img
+                src={
+                  document.documentElement.dataset.theme === "dark"
+                    ? "/brand/moneo-wordmark-dark.png"
+                    : "/brand/moneo-wordmark-light.png"
+                }
+                alt="Moneo"
+                className="moneo-wordmark"
+              />
               <span>Manage Today. Build Tomorrow.</span>
             </div>
           </Link>
@@ -809,8 +817,16 @@ export default function Navbar() {
 
       <header className="mobile-app-header">
         <Link to="/dashboard" className="mobile-brand">
-          <img src="/pwa-192x192.png" alt="Finance Manager" />
-          <strong>Moneo</strong>
+          <img src="/pwa-192x192.png" alt="Moneo" />
+          <img
+            src={
+              document.documentElement.dataset.theme === "dark"
+                ? "/brand/moneo-wordmark-dark.png"
+                : "/brand/moneo-wordmark-light.png"
+            }
+            alt="Moneo"
+            className="moneo-wordmark"
+          />
         </Link>
 
         <div className="mobile-header-actions">

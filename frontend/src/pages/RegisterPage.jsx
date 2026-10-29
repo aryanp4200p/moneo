@@ -180,26 +180,77 @@ export default function RegisterPage() {
         minHeight: "100vh",
         width: "100%",
         display: "flex",
+        flexDirection: "column",
+        padding: "0 20px 36px",
         alignItems: "center",
-        justifyContent: "center",
-        padding: "36px 20px",
+        justifyContent: "flex-start",
         boxSizing: "border-box",
         backgroundColor: "#f4f6fc",
         backgroundImage:
-          "linear-gradient(rgba(121,87,232,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(121,87,232,.045) 1px, transparent 1px)",
-        backgroundSize: "42px 42px",
+          "linear-gradient(rgba(121,87,232,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(121,87,232,0.09) 1px, transparent 1px)",
+        backgroundSize: "44px 44px",
       }}
     >
+      <header className="register-brand">
+        <Link to="/" className="register-brand-link" aria-label="Moneo home">
+          <img src="/pwa-192x192.png" alt="" className="register-brand-icon" />
+
+          <img
+            src="/brand/moneo-wordmark-light.png"
+            alt="Moneo"
+            className="register-brand-wordmark"
+          />
+        </Link>
+      </header>
       <style>{`
         .register-page,
         .register-page * {
           box-sizing: border-box;
         }
+        
 
+        .register-brand {
+          position: relative;
+          width: 100%;
+          min-height: 64px;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          padding: 10px clamp(20px, 5vw, 64px);
+          background: #ffffff;
+          border-bottom: 1px solid #e7e8f1;
+          flex-shrink: 0;
+
+        }
+
+        .register-brand-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          flex-shrink: 0;
+        }
+
+        .register-brand-icon {
+          display: block;
+          width: 34px;
+          height: 34px;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+
+        .register-brand-wordmark {
+          display: block;
+          width: 100px;
+          height: auto;
+          max-width: 100%;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
         .register-card {
           width: 100%;
           max-width: 460px;
-          margin: auto;
+          margin: 0 auto;
           padding: 30px;
           border: 1px solid #e4e7f0;
           border-radius: 20px;
@@ -271,8 +322,8 @@ export default function RegisterPage() {
 
         @media (max-width: 480px) {
           .register-page {
-            padding: 18px 12px !important;
-            align-items: flex-start !important;
+            padding: 82px 12px 24px !important;
+            align-items: center !important;
           }
 
           .register-card {

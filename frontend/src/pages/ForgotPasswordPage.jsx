@@ -84,13 +84,14 @@ export default function ForgotPasswordPage() {
       >
         <div
           style={{
+            width: "100%",
             maxWidth: 1200,
             margin: "0 auto",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
+            gap: 24,
+            boxSizing: "border-box",
           }}
         >
           <Link
@@ -103,22 +104,37 @@ export default function ForgotPasswordPage() {
               color: "#7957E8",
             }}
           >
-            <span
+            <img
+              src="/pwa-192x192.png"
+              alt=""
               style={{
                 width: 44,
                 height: 44,
-                borderRadius: 14,
-                backgroundColor: "#EEE8FF",
-                display: "grid",
-                placeItems: "center",
+                objectFit: "contain",
+                flexShrink: 0,
               }}
-            >
-              <Wallet size={24} />
-            </span>
-            <span style={{ fontSize: 23, fontWeight: 700 }}>Moneo</span>
+            />
+            <img
+              src="/brand/moneo-wordmark-light.png"
+              alt="Moneo"
+              style={{
+                width: 100,
+                height: "auto",
+                objectFit: "contain",
+                flexShrink: 0,
+              }}
+            />
           </Link>
 
-          <span style={{ color: "#64748B", fontSize: 14 }}>
+          <span
+            style={{
+              color: "#64748B",
+              fontSize: 14,
+              whiteSpace: "normal",
+              textAlign: "right",
+              flexShrink: 1,
+            }}
+          >
             Personal finance, made clearer.
           </span>
         </div>

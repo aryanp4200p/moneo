@@ -57,8 +57,8 @@ export default function LandingPage() {
           color: var(--landing-ink);
           background-color: #F5F6FC;
           background-image:
-            linear-gradient(rgba(121,87,232,.065) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(121,87,232,.065) 1px, transparent 1px);
+            linear-gradient(rgba(121,87,232,0.045) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(121,87,232,0.045) 1px, transparent 1px);     
           background-size: 44px 44px;
           font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           overflow-wrap: anywhere;
@@ -75,10 +75,14 @@ export default function LandingPage() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 20px;
-          padding: 14px clamp(20px, 5.5vw, 80px);
-          background: rgba(255,255,255,.92);
-          border-bottom: 1px solid var(--landing-line);
+          gap: 12px;
+          padding: 14px clamp(12px, 5.5vw, 80px);
+          background: #ffffff;
+          border-bottom: 1px solid #D8D2EC !important;
+          box-shadow: 0 2px 5px rgba(39, 31, 82, 0.04);
+          box-sizing: border-box;
+          width: 100%;
+
         }
 
         .landing-brand {
@@ -90,22 +94,48 @@ export default function LandingPage() {
           font-weight: 800;
           letter-spacing: -.7px;
           text-decoration: none;
+          flex-shrink: 0;
+          white-space: nowrap;
         }
 
         .landing-brand-icon {
-          display: grid;
+          display: block;
           width: 39px;
           height: 39px;
           flex-shrink: 0;
           place-items: center;
-          border-radius: 12px;
-          background: #EEE9FF;
+          object-fit: contain;
+          border-radius: 0;
+          background: transparent;
+        }
+          
+        .landing-brand-wordmark {
+         display: block;
+         width: 130px;
+         height: auto;
+         max-width: 100%;
+         object-fit: contain;
+         flex-shrink: 0;
         }
 
         .landing-nav-note {
           color: var(--landing-muted);
           font-size: 13px;
+          white-space: nowrap;
+          flex-shrink: 1;
+          min-width: 0;
+          text-align: right;
         }
+          @media (max-width: 600px) {
+           .landing-nav-note {
+            display: block;
+            font-size: 10px;
+            white-space: normal;
+            text-align: right;
+            max-width: 115px;
+            line-height: 1.4;
+           }
+          }
 
         .landing-main {
           width: min(1160px, 100%);
@@ -548,15 +578,13 @@ export default function LandingPage() {
 
       {/* Standalone light header */}
       <header className="landing-nav">
-        <Link
-          to="/"
-          className="landing-brand"
-          aria-label="Finance Manager home"
-        >
-          <span className="landing-brand-icon">
-            <Wallet size={21} />
-          </span>
-          Moneo
+        <Link to="/" className="landing-brand" aria-label="Moneo home">
+          <img src="/pwa-192x192.png" alt="" className="landing-brand-icon" />
+          <img
+            src="/brand/moneo-wordmark-light.png"
+            alt="Moneo"
+            className="landing-brand-wordmark"
+          />
         </Link>
 
         <span className="landing-nav-note">

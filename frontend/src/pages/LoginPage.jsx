@@ -100,25 +100,37 @@ export default function LoginPage() {
             letterSpacing: "-0.7px",
           }}
         >
-          <span
+          <img
+            src="/pwa-192x192.png"
+            alt=""
             style={{
-              display: "grid",
-              placeItems: "center",
               width: 34,
               height: 34,
-              borderRadius: 10,
-              backgroundColor: "#EEE9FF",
+              objectFit: "contain",
+              flexShrink: 0,
             }}
-          >
-            <Wallet size={20} />
-          </span>
-          Moneo
+          />
+          <img
+            src="/brand/moneo-wordmark-light.png"
+            alt="Moneo"
+            style={{
+              display: "block",
+              width: 100,
+              height: "auto",
+              objectFit: "contain",
+              flexShrink: 0,
+            }}
+          />
         </Link>
 
         <span
           style={{
             color: "#737990",
-            fontSize: 13,
+            fontSize: 12,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            marginLeft: "auto",
+            paddingLeft: 8,
           }}
         >
           Personal finance, made clearer.
@@ -470,7 +482,7 @@ export default function LoginPage() {
                   backgroundColor: "#ECECF3",
                 }}
               />
-              NEW TO FINANCEFLOW?
+              NEW TO MONEO?
               <span
                 style={{
                   flex: 1,

@@ -94,10 +94,10 @@ export default function ResetPasswordPage() {
 
   const pageStyle = {
     minHeight: "100vh",
-    backgroundColor: "#F5F6FC",
+    backgroundColor: "#f4f6fc",
     backgroundImage:
-      "linear-gradient(rgba(121,87,232,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(121,87,232,0.07) 1px, transparent 1px)",
-    backgroundSize: "40px 40px",
+      "linear-gradient(rgba(121,87,232,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(121,87,232,0.045) 1px, transparent 1px)",
+    backgroundSize: "44px 44px",
     display: "flex",
     flexDirection: "column",
     fontFamily: "Inter, system-ui, -apple-system, sans-serif",
@@ -167,30 +167,36 @@ export default function ResetPasswordPage() {
       >
         <Link
           to="/"
+          aria-label="Moneo home"
           style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            gap: 9,
-            color: "#7957E8",
+            gap: 10,
             textDecoration: "none",
-            fontSize: 21,
-            fontWeight: 800,
-            letterSpacing: "-0.7px",
+            flexShrink: 0,
           }}
         >
-          <span
+          <img
+            src="/pwa-192x192.png"
+            alt=""
             style={{
-              display: "grid",
-              placeItems: "center",
               width: 34,
               height: 34,
-              borderRadius: 10,
-              backgroundColor: "#EEE9FF",
+              objectFit: "contain",
+              flexShrink: 0,
             }}
-          >
-            <Wallet size={20} />
-          </span>
-          Moneo
+          />
+
+          <img
+            src="/brand/moneo-wordmark-light.png"
+            alt="Moneo"
+            style={{
+              width: 100,
+              height: "auto",
+              objectFit: "contain",
+              flexShrink: 0,
+            }}
+          />
         </Link>
 
         <span style={{ color: "#737990", fontSize: 13 }}>
