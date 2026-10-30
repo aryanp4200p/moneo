@@ -43,7 +43,7 @@ class RecurringTransactionCreate(BaseModel):
 
     start_date: date
 
-    next_due_date: date
+    next_due_date: Optional[date] = None
 
     end_date: Optional[date] = None
 

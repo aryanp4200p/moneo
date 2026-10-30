@@ -91,7 +91,8 @@ export default function BudgetPlannerPage() {
   });
 
   const [submitting, setSubmitting] = useState(false);
-
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const [successMessage, setSuccessMessage] = useState("");
@@ -206,23 +207,30 @@ export default function BudgetPlannerPage() {
   // DELETE BUDGET
   // ============================================================
 
-  const handleDelete = async (budgetId, categoryName) => {
-    if (
-      window.confirm(
-        `Are you sure you want to delete the budget for "${categoryName}"?`,
-      )
-    ) {
-      setErrorMessage("");
+  const handleDelete = (budgetId, categoryName) => {
+    setDeleteTarget({
+      id: budgetId,
+      category: categoryName,
+    });
+  };
 
-      try {
-        await deleteBudget(budgetId);
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return;
 
-        await fetchProgress();
+    setDeleting(true);
+    setErrorMessage("");
 
-        await fetchPredictions();
-      } catch (err) {
-        setErrorMessage("Failed to delete budget. Please try again.");
-      }
+    try {
+      await deleteBudget(deleteTarget.id);
+
+      await fetchProgress();
+      await fetchPredictions();
+
+      setDeleteTarget(null);
+    } catch (err) {
+      setErrorMessage("Failed to delete budget. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1226,7 +1234,15 @@ export default function BudgetPlannerPage() {
           </div>
 
           {/* Budget Month */}
-          <div style={{ marginBottom: 14 }}>
+          {/* Budget Month */}
+          <div
+            style={{
+              marginBottom: 14,
+              width: "100%",
+              boxSizing: "border-box",
+              paddingRight: 4,
+            }}
+          >
             <label
               htmlFor="budgetMonth"
               style={{ display: "block", marginBottom: 6 }}
@@ -1356,6 +1372,106 @@ export default function BudgetPlannerPage() {
           ))}
         </div>
       </div>
+      {deleteTarget && (
+        <div
+          onClick={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15, 12, 30, 0.55)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-budget-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              padding: 24,
+              borderRadius: 18,
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-line)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: "var(--color-alert-soft)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 18,
+              }}
+            >
+              <Trash2 size={22} style={{ color: "var(--color-alert)" }} />
+            </div>
+
+            <h3 id="delete-budget-title" style={{ margin: "0 0 10px" }}>
+              Delete this budget?
+            </h3>
+
+            <p
+              style={{
+                color: "var(--color-ink-muted)",
+                fontSize: 14,
+                lineHeight: 1.6,
+                margin: "0 0 24px",
+              }}
+            >
+              Are you sure you want to delete the budget for{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                "{deleteTarget.category}"
+              </strong>
+              ? This action cannot be undone.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="btn"
+                disabled={deleting}
+                onClick={confirmDelete}
+                style={{
+                  background: "var(--color-alert)",
+                  color: "#fff",
+                  border: "none",
+                  opacity: deleting ? 0.7 : 1,
+                }}
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

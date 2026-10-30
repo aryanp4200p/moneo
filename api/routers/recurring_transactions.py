@@ -192,7 +192,10 @@ def create_recurring_transaction(
         ),
         frequency=payload.frequency,
         start_date=payload.start_date,
-        next_due_date=payload.next_due_date,
+        next_due_date=advance_date(
+            payload.start_date,
+            payload.frequency,
+        ), 
         end_date=payload.end_date,
         is_active=True,
     )
@@ -391,6 +394,14 @@ def update_recurring_transaction(
     updates = payload.model_dump(
         exclude_unset=True
     )
+    schedule_changed = (
+        "start_date" in updates
+        or "frequency" in updates
+    )
+
+    next_due_date_provided = (
+        "next_due_date" in updates
+    )
 
     for key, value in updates.items():
 
@@ -402,6 +413,14 @@ def update_recurring_transaction(
             key,
             value,
         )
+    
+# Automatically recalculate when the schedule changes.
+    if schedule_changed:
+        recurring.next_due_date = advance_date(
+            recurring.start_date,
+            recurring.frequency,
+    )
+
 
     validate_dates(
         recurring.start_date,
