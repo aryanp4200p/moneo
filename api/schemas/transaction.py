@@ -1,7 +1,25 @@
+
 from datetime import date, datetime
 from typing import Optional, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+# =========================================================
+# TIMEZONE CONFIGURATION
+# =========================================================
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def get_today() -> date:
+    """
+    Returns today's date according to Indian Standard Time.
+    Prevents UTC server timezone differences from causing
+    valid Indian transaction dates to be rejected.
+    """
+    return datetime.now(IST).date()
 
 
 # =========================================================
@@ -45,7 +63,7 @@ class TransactionCreate(BaseModel):
     @field_validator("date")
     @classmethod
     def validate_date(cls, value: date) -> date:
-        if value > date.today():
+        if value > get_today():
             raise ValueError(
                 "Transaction date cannot be in the future."
             )
@@ -73,7 +91,7 @@ class TransactionUpdate(BaseModel):
     @field_validator("date")
     @classmethod
     def validate_date(cls, value: Optional[date]) -> Optional[date]:
-        if value is not None and value > date.today():
+        if value is not None and value > get_today():
             raise ValueError(
                 "Transaction date cannot be in the future."
             )
@@ -151,7 +169,7 @@ class CSVPreviewTransaction(BaseModel):
     @field_validator("date")
     @classmethod
     def validate_date(cls, value: date) -> date:
-        if value > date.today():
+        if value > get_today():
             raise ValueError(
                 "Transaction date cannot be in the future."
             )
