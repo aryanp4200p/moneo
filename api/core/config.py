@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    IDLE_TIMEOUT_MINUTES: int = 30
+    MAX_SESSION_DAYS: int = 7  
+
     # AI Advisor
     AI_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://localhost:11434"

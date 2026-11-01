@@ -21,11 +21,13 @@ import InsightsPage from "./pages/InsightsPage";
 import PredictiveFinancePage from "./pages/PredictiveFinancePage";
 import WealthPage from "./pages/WealthPage";
 import ReceiptScannerPage from "./pages/ReceiptScannerPage";
+import useSessionActivity from "./hooks/useSessionActivity";
 
 // Other
 import NotFoundPage from "./pages/NotFoundPage";
 
 function AppContent() {
+  useSessionActivity();
   const location = useLocation();
 
   const standalonePaths = [

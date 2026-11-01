@@ -198,31 +198,33 @@ def decode_access_token(token: str) -> dict:
 # =========================================================
 # GET CURRENT USER
 # =========================================================
+IDLE_TIMEOUT_MINUTES = 30
+MAX_SESSION_DAYS = 7
+
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Session expired or invalid. Please login again.",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
     try:
         payload = decode_access_token(token)
+
         user_id = payload.get("sub")
         session_id = payload.get("session_id")
 
         if user_id is None or session_id is None:
             raise credentials_exception
 
-    except JWTError:
-        raise credentials_exception
-
-    try:
         user_id_int = int(user_id)
-    except (TypeError, ValueError):
+
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
 
     user_session = (
@@ -238,22 +240,46 @@ def get_current_user(
     if user_session is None:
         raise credentials_exception
 
-    user = (
-        db.query(User)
-        .filter(User.id == user_id_int)
-        .first()
+    now = datetime.now(timezone.utc)
+
+    created_at = user_session.created_at
+    last_active_at = user_session.last_active_at
+
+    # Handle timezone-naive database timestamps safely.
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    if last_active_at.tzinfo is None:
+        last_active_at = last_active_at.replace(tzinfo=timezone.utc)
+
+    absolute_expiry = created_at + timedelta(
+        days=settings.MAX_SESSION_DAYS
     )
+    idle_expiry = last_active_at + timedelta(
+        minutes=IDLE_TIMEOUT_MINUTES
+    )
+
+    # Check absolute session lifetime.
+    if now >= absolute_expiry:
+        user_session.is_active = False
+        db.commit()
+        raise credentials_exception
+
+    # Check inactivity.
+    if now >= idle_expiry:
+        user_session.is_active = False
+        db.commit()
+        raise credentials_exception
+
+    user = db.query(User).filter(User.id == user_id_int).first()
 
     if user is None:
+        user_session.is_active = False
+        db.commit()
         raise credentials_exception
-    # ---------------------------------------------
-    # Update last activity
-    # ---------------------------------------------
 
-    user_session.last_active_at = datetime.now(
-        timezone.utc
-    )
-
-    db.commit()
+    # IMPORTANT:
+    # Do not update last_active_at on every API request.
+    # We will add meaningful activity tracking separately.
 
     return user

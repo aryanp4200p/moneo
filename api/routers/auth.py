@@ -1708,6 +1708,63 @@ def revoke_session(
 
     }
 
+@router.post("/activity")
+def update_session_activity(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub"))
+        session_id = payload.get("session_id")
+    except (JWTError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid session.",
+        )
+
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Invalid session.")
+
+    user_session = (
+        db.query(UserSession)
+        .filter(
+            UserSession.session_id == session_id,
+            UserSession.user_id == user_id,
+            UserSession.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if not user_session:
+        raise HTTPException(status_code=401, detail="Session not found.")
+
+    now = datetime.now(timezone.utc)
+
+    created_at = user_session.created_at
+    last_active_at = user_session.last_active_at
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    if last_active_at.tzinfo is None:
+        last_active_at = last_active_at.replace(tzinfo=timezone.utc)
+
+    if (
+        now >= created_at + timedelta(days=settings.MAX_SESSION_DAYS)
+        or now >= last_active_at + timedelta(
+            minutes=settings.IDLE_TIMEOUT_MINUTES
+        )
+    ):
+        user_session.is_active = False
+        db.commit()
+        raise HTTPException(status_code=401, detail="Session expired.")
+
+    user_session.last_active_at = now
+    db.commit()
+
+    return {"message": "Activity updated"}
+
 # ==========================================================
 
 # Logout All Other Sessions
