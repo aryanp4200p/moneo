@@ -47,6 +47,7 @@ const ProfilePage = () => {
   // Profile image
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [showRemovePhotoConfirm, setShowRemovePhotoConfirm] = useState(false);
   // ==========================================================
   // ACTIVE SESSIONS
   // ==========================================================
@@ -57,6 +58,10 @@ const ProfilePage = () => {
   const [loggingOutOthers, setLoggingOutOthers] = useState(false);
   const [sessionError, setSessionError] = useState("");
   const [sessionSuccess, setSessionSuccess] = useState("");
+  // Session confirmation modals
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [sessionToRevoke, setSessionToRevoke] = useState(null);
+  const [showLogoutOthersConfirm, setShowLogoutOthersConfirm] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -164,25 +169,18 @@ const ProfilePage = () => {
   // Remove profile image
   // ==========================================================
 
-  const handleRemoveProfileImage = async () => {
-    if (!user?.profile_image_url) {
-      return;
-    }
+  const handleRemoveProfileImage = () => {
+    if (!user?.profile_image_url) return;
+    setShowRemovePhotoConfirm(true);
+  };
 
-    const confirmed = window.confirm(
-      "Are you sure you want to remove your profile picture?",
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
+  const confirmRemoveProfileImage = async () => {
+    setShowRemovePhotoConfirm(false);
     setImageError("");
     setUploadingImage(true);
 
     try {
       const { data } = await API.delete("/auth/profile-image");
-
       updateUser(data);
     } catch (error) {
       console.error("Failed to remove profile image:", error);
@@ -437,11 +435,15 @@ const ProfilePage = () => {
     }
   };
 
-  const handleRevokeSession = async (sessionId) => {
-    if (!window.confirm("Are you sure you want to sign out this session?")) {
-      return;
-    }
+  const handleRevokeSession = (sessionId) => {
+    setSessionToRevoke(sessionId);
+  };
 
+  const confirmRevokeSession = async () => {
+    if (!sessionToRevoke) return;
+
+    const sessionId = sessionToRevoke;
+    setSessionToRevoke(null);
     setRevokingSessionId(sessionId);
     setSessionError("");
     setSessionSuccess("");
@@ -465,15 +467,12 @@ const ProfilePage = () => {
     }
   };
 
-  const handleLogoutOtherSessions = async () => {
-    if (
-      !window.confirm(
-        "This will sign out all other devices and browsers. Continue?",
-      )
-    ) {
-      return;
-    }
+  const handleLogoutOtherSessions = () => {
+    setShowLogoutOthersConfirm(true);
+  };
 
+  const confirmLogoutOtherSessions = async () => {
+    setShowLogoutOthersConfirm(false);
     setLoggingOutOthers(true);
     setSessionError("");
     setSessionSuccess("");
@@ -2082,11 +2081,7 @@ const ProfilePage = () => {
             </div>
 
             <button
-              onClick={() => {
-                if (window.confirm("Are you sure you want to sign out?")) {
-                  logout();
-                }
-              }}
+              onClick={() => setShowSignOutConfirm(true)}
               className="btn btn-ghost"
               style={{
                 color: "var(--color-alert)",
@@ -2098,6 +2093,226 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
+      {/* Remove Profile Photo Confirmation Modal */}
+      {showRemovePhotoConfirm && (
+        <div
+          onClick={() => setShowRemovePhotoConfirm(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-photo-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "var(--color-surface)",
+              color: "var(--color-ink)",
+              border: "1px solid var(--color-border, rgba(128,128,128,0.2))",
+              borderRadius: 18,
+              padding: 24,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: "var(--color-alert-soft)",
+                color: "var(--color-alert)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <Trash2 size={23} />
+            </div>
+
+            <h3
+              id="remove-photo-title"
+              style={{ margin: "0 0 8px", fontSize: 19 }}
+            >
+              Remove profile picture?
+            </h3>
+
+            <p
+              style={{
+                margin: "0 0 24px",
+                color: "var(--color-ink-muted)",
+                fontSize: 14,
+                lineHeight: 1.6,
+              }}
+            >
+              Are you sure you want to remove your profile picture? Your
+              initials will be displayed instead.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setShowRemovePhotoConfirm(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmRemoveProfileImage}
+                disabled={uploadingImage}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "9px 16px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: "var(--color-alert)",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  cursor: uploadingImage ? "not-allowed" : "pointer",
+                  opacity: uploadingImage ? 0.7 : 1,
+                }}
+              >
+                <Trash2 size={15} />
+                Remove Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Sign Out Confirmation */}
+      {showSignOutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 shadow-xl"
+            style={{
+              background: "var(--color-surface)",
+              color: "var(--color-ink)",
+              border: "1px solid var(--color-line)",
+            }}
+          >
+            <h3 className="text-lg font-semibold">Sign out?</h3>
+            <p
+              className="mt-2 text-sm"
+              style={{ color: "var(--color-ink-muted)" }}
+            >
+              Are you sure you want to sign out of Moneo?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSignOutConfirm(false)}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowSignOutConfirm(false);
+                  logout();
+                }}
+                className="btn btn-primary"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revoke Session Confirmation */}
+      {sessionToRevoke && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 shadow-xl"
+            style={{
+              background: "var(--color-surface)",
+              color: "var(--color-ink)",
+              border: "1px solid var(--color-line)",
+            }}
+          >
+            <h3 className="text-lg font-semibold">Revoke this session?</h3>
+            <p
+              className="mt-2 text-sm"
+              style={{ color: "var(--color-ink-muted)" }}
+            >
+              This device will be signed out and will need to log in again.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setSessionToRevoke(null)}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRevokeSession}
+                className="btn btn-primary"
+              >
+                Revoke Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sign Out Other Sessions Confirmation */}
+      {showLogoutOthersConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 shadow-xl"
+            style={{
+              background: "var(--color-surface)",
+              color: "var(--color-ink)",
+              border: "1px solid var(--color-line)",
+            }}
+          >
+            <h3 className="text-lg font-semibold">Sign out other sessions?</h3>
+            <p
+              className="mt-2 text-sm"
+              style={{ color: "var(--color-ink-muted)" }}
+            >
+              All other devices will be signed out. Your current session will
+              remain active.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutOthersConfirm(false)}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogoutOtherSessions}
+                className="btn btn-primary"
+              >
+                Sign Out Other Sessions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
