@@ -45,28 +45,26 @@ The application uses a React frontend, a FastAPI backend, PostgreSQL for data st
 
 ## Features
 
-### 1. Financial Dashboard
+### 1. Dashboard and Financial Analytics
 
-- Get an overview of personal financial activity.
-- Monitor income, expenses, and account balance.
-- Visualize spending patterns.
-- View financial summaries and trends.
-- Filter dashboard information by time period.
+- Monitor income, expenses, account balance, and financial trends.
+- Visualize spending patterns and view period-based summaries.
+- Compare monthly activity and identify potential overspending.
+- Track financial health scores and progress over time.
 
-### 2. Transaction Management
+### 2. Transactions and Receipt Scanning
 
-- Add and manage income and expense transactions.
-- Categorize transactions.
-- View transaction history.
-- Import transaction information through CSV support.
-- Organize financial records in one place.
+- Add, categorize, and manage income and expense transactions.
+- View transaction history and import data through CSV.
+- Manage recurring payments and expenses.
+- Upload receipt images and extract information using OCR to support transaction entry.
 
-### 3. Budget Planning
+### 3. Budget Planning and Financial Goals
 
-- Create and manage budgets.
-- Monitor spending against allocated budgets.
-- Track budget utilization.
-- View budget progress and related insights.
+- Create budgets and monitor spending against allocated amounts.
+- Track budget utilization and progress.
+- Maintain wealth-related information and financial goals.
+- Use financial insights to support better budgeting decisions.
 
 ### 4. AI Financial Advisor
 
@@ -83,68 +81,28 @@ Example questions:
 
 **Key capabilities:**
 
-- Natural-language financial questions.
-- Context-aware financial responses.
+- Natural-language questions with context-aware responses.
 - Follow-up questions using recent conversation history.
-- Monthly spending insights.
-- Personalized financial guidance based on available financial data.
+- Answers based on backend-calculated financial data, not guesses.
+- Monthly spending insights and personalized financial guidance.
 - Configurable AI providers using Ollama or OpenAI.
 
-### 5. Financial Health Score
+### 5. Financial Reports
 
-- Calculate a financial health score.
-- Monitor financial health information.
-- View historical health score information.
-- Understand financial progress over time.
-
-### 6. Predictive Finance and Insights
-
-- Analyze spending patterns.
-- Compare monthly financial activity.
-- Identify potential overspending.
-- Generate insights based on financial activity.
-- Help users make informed budgeting decisions.
-
-### 7. Recurring Transactions
-
-- Manage recurring financial transactions.
-- Keep track of regular payments and expenses.
-- Organize recurring financial activity.
-
-### 8. Receipt Scanner
-
-- Upload receipt images.
-- Extract information using OCR-related processing.
-- Support transaction entry through receipt scanning.
-
-### 9. Wealth Management and Goals
-
-- Maintain wealth-related information.
-- Track financial goals.
-- Organize financial planning information.
-
-### 10. Financial Reports
-
-- Generate financial reports.
-- View categorized financial information.
+- Generate financial reports with categorized financial information.
 - Generate PDF reports.
 
-### 11. Authentication and Profile Management
+### 6. Authentication and Profile Management
 
-- User registration and login.
-- JWT-based authentication.
-- Protected application routes.
-- Password reset functionality.
-- User profile management.
-- Session-related functionality.
+- User registration, login, and password reset.
+- JWT-based authentication and protected application routes.
+- User profile and session-related functionality.
 
-### 12. User Experience
+### 7. User Experience
 
-- Responsive interface.
-- Light and dark themes.
+- Responsive interface with light and dark themes.
 - Interactive financial charts.
-- Progressive Web App support.
-- Reusable React components.
+- Progressive Web App support and reusable React components.
 
 ---
 
