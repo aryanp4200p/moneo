@@ -812,13 +812,9 @@ For production use, configure strong secrets, HTTPS, restricted database access,
 
 Potential areas for future development include:
 
-- More advanced financial forecasting.
-- Improved personalized budget recommendations.
-- Additional bank statement import formats.
-- Enhanced receipt extraction and validation.
-- More detailed financial goal analytics.
-- Improved AI response performance and availability.
-- Expanded financial reports and visualizations.
+- More advanced financial forecasting and personalized budget recommendations.
+- Additional bank statement import formats and enhanced receipt extraction and validation.
+- Enhanced AI response performance and financial reporting.
 
 ---
 
