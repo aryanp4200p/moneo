@@ -21,6 +21,9 @@ export default function GoalsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
+  const [goalToDelete, setGoalToDelete] = useState(null);
+  const [contributionGoal, setContributionGoal] = useState(null);
+  const [contributionAmount, setContributionAmount] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -135,26 +138,38 @@ export default function GoalsPage() {
   };
 
   const deleteGoal = (id) => {
-    if (!window.confirm("Delete this financial goal?")) return;
+    const goal = goals.find((item) => item.id === id);
 
-    setGoals((current) => current.filter((goal) => goal.id !== id));
+    if (goal) {
+      setGoalToDelete(goal);
+    }
   };
 
-  const addContribution = (goal) => {
-    const amountText = window.prompt(
-      `How much would you like to add to "${goal.name}"?`,
-      "",
+  const confirmDeleteGoal = () => {
+    if (!goalToDelete) return;
+
+    setGoals((current) =>
+      current.filter((goal) => goal.id !== goalToDelete.id),
     );
 
-    if (amountText === null) return;
+    setGoalToDelete(null);
+  };
 
-    const amount = Number(amountText);
+  const openContributionModal = (goal) => {
+    setContributionGoal(goal);
+    setContributionAmount("");
+  };
 
-    if (!amount || amount <= 0) return;
+  const confirmContribution = () => {
+    const amount = Number(contributionAmount);
+
+    if (!amount || amount <= 0 || !Number.isFinite(amount)) {
+      return;
+    }
 
     setGoals((current) =>
       current.map((item) => {
-        if (item.id !== goal.id) return item;
+        if (item.id !== contributionGoal.id) return item;
 
         return {
           ...item,
@@ -162,6 +177,9 @@ export default function GoalsPage() {
         };
       }),
     );
+
+    setContributionGoal(null);
+    setContributionAmount("");
   };
 
   return (
@@ -396,7 +414,7 @@ export default function GoalsPage() {
                     <button
                       type="button"
                       className="primary-dashboard-button"
-                      onClick={() => addContribution(goal)}
+                      onClick={() => openContributionModal(goal)}
                       style={{ flex: 1 }}
                       disabled={completed}
                     >
@@ -647,6 +665,378 @@ export default function GoalsPage() {
 
               <button type="submit" className="primary-dashboard-button">
                 {editingGoal ? "Save Changes" : "Create Goal"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {goalToDelete && (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setGoalToDelete(null);
+            }
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1100,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-goal-title"
+            aria-describedby="delete-goal-description"
+            style={{
+              width: "min(420px, 100%)",
+              padding: 24,
+              borderRadius: 20,
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-line)",
+              boxShadow: "0 25px 70px rgba(0,0,0,.25)",
+            }}
+          >
+            {/* Modal heading */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 13,
+                  background: "rgba(239, 68, 68, 0.12)",
+                  fontSize: 21,
+                }}
+              >
+                🗑️
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <h2
+                  id="delete-goal-title"
+                  style={{
+                    margin: 0,
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "var(--color-ink)",
+                  }}
+                >
+                  Delete financial goal?
+                </h2>
+
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 13,
+                    color: "var(--color-ink-muted)",
+                  }}
+                >
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setGoalToDelete(null)}
+                aria-label="Close dialog"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--color-ink-muted)",
+                  cursor: "pointer",
+                  fontSize: 23,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Description */}
+            <p
+              id="delete-goal-description"
+              style={{
+                margin: "0 0 24px",
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: "var(--color-ink-muted)",
+              }}
+            >
+              Are you sure you want to delete{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                "{goalToDelete.name}"
+              </strong>
+              ? Your savings progress for this goal will also be removed.
+            </p>
+
+            {/* Actions */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setGoalToDelete(null)}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDeleteGoal}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#DC2626",
+                  color: "#FFFFFF",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background 0.2s ease",
+                }}
+              >
+                Delete Goal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contributionGoal && (
+        <div
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setContributionGoal(null);
+              setContributionAmount("");
+            }
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              confirmContribution();
+            }}
+            style={{
+              width: "min(420px, 100%)",
+              padding: 24,
+              borderRadius: 20,
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-line)",
+              boxShadow: "0 25px 70px rgba(0,0,0,.25)",
+            }}
+          >
+            {/* Heading */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 20,
+              }}
+            >
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 13,
+                  background: "rgba(16, 185, 129, 0.12)",
+                  fontSize: 23,
+                }}
+              >
+                💰
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "var(--color-ink)",
+                  }}
+                >
+                  Add Savings
+                </h2>
+
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 13,
+                    color: "var(--color-ink-muted)",
+                  }}
+                >
+                  Update your savings progress.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setContributionGoal(null);
+                  setContributionAmount("");
+                }}
+                aria-label="Close dialog"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--color-ink-muted)",
+                  cursor: "pointer",
+                  fontSize: 23,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Goal information */}
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                background: "var(--color-bg)",
+                border: "1px solid var(--color-line)",
+                marginBottom: 20,
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-ink)",
+                }}
+              >
+                {contributionGoal.icon} {contributionGoal.name}
+              </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  fontSize: 12,
+                  color: "var(--color-ink-muted)",
+                }}
+              >
+                <span>Already saved</span>
+                <strong style={{ color: "var(--color-ink)" }}>
+                  {formatCurrency(contributionGoal.saved)}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginTop: 7,
+                  fontSize: 12,
+                  color: "var(--color-ink-muted)",
+                }}
+              >
+                <span>Remaining</span>
+                <strong style={{ color: "var(--color-ink)" }}>
+                  {formatCurrency(
+                    Math.max(
+                      Number(contributionGoal.target) -
+                        Number(contributionGoal.saved),
+                      0,
+                    ),
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            {/* Amount input */}
+            <label style={{ display: "block" }}>
+              <span
+                style={{
+                  display: "block",
+                  marginBottom: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--color-ink)",
+                }}
+              >
+                Contribution Amount (₹)
+              </span>
+
+              <input
+                autoFocus
+                required
+                type="number"
+                min="0.01"
+                step="any"
+                value={contributionAmount}
+                onChange={(event) => setContributionAmount(event.target.value)}
+                placeholder="Enter amount"
+                style={inputStyle}
+              />
+            </label>
+
+            {/* Buttons */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                marginTop: 25,
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setContributionGoal(null);
+                  setContributionAmount("");
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="primary-dashboard-button"
+                disabled={
+                  !contributionAmount ||
+                  !Number.isFinite(Number(contributionAmount)) ||
+                  Number(contributionAmount) <= 0
+                }
+              >
+                Add Savings
               </button>
             </div>
           </form>
