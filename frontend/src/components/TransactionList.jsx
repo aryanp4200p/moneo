@@ -54,7 +54,6 @@ export default function TransactionList() {
   // GLOBAL SEARCH -> TRANSACTION
   // --------------------------------------------------
 
-  // Keep this page synchronized with the search query sent by Navbar.
   useEffect(() => {
     const urlSearch = searchParams.get("search") || "";
     const urlHighlight = searchParams.get("highlight") || "";
@@ -63,8 +62,6 @@ export default function TransactionList() {
     setHighlightedId(urlHighlight);
   }, [searchParams]);
 
-  // After transactions are loaded and filtered, scroll to the exact
-  // transaction selected by the global search and highlight it.
   useEffect(() => {
     if (!highlightedId || loading || transactions.length === 0) {
       return;
@@ -120,14 +117,6 @@ export default function TransactionList() {
     });
   }, [transactions, searchQuery, typeFilter]);
 
-  // --------------------------------------------------
-  // SELECTED TRANSACTIONS
-  // --------------------------------------------------
-
-  const selectedTransactions = useMemo(() => {
-    return transactions.filter((txn) => selectedIds.includes(txn.id));
-  }, [transactions, selectedIds]);
-
   const allFilteredSelected =
     filteredTransactions.length > 0 &&
     filteredTransactions.every((txn) => selectedIds.includes(txn.id));
@@ -148,10 +137,8 @@ export default function TransactionList() {
     const filteredIds = filteredTransactions.map((txn) => txn.id);
 
     if (allFilteredSelected) {
-      // Remove only currently filtered transactions
       setSelectedIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
     } else {
-      // Add currently filtered transactions
       setSelectedIds((prev) => [...new Set([...prev, ...filteredIds])]);
     }
   };
@@ -161,7 +148,7 @@ export default function TransactionList() {
   };
 
   // --------------------------------------------------
-  // SINGLE DELETE
+  // DELETE HANDLERS
   // --------------------------------------------------
 
   const handleDelete = (id) => {
@@ -171,10 +158,6 @@ export default function TransactionList() {
       id,
     });
   };
-
-  // --------------------------------------------------
-  // BULK DELETE
-  // --------------------------------------------------
 
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
@@ -186,15 +169,7 @@ export default function TransactionList() {
     });
   };
 
-  // --------------------------------------------------
-  // CONFIRM DELETE
-  // --------------------------------------------------
-
   const confirmDelete = async () => {
-    // ----------------------------------------------
-    // SINGLE DELETE
-    // ----------------------------------------------
-
     if (deleteModal.type === "single") {
       const id = deleteModal.id;
 
@@ -208,8 +183,6 @@ export default function TransactionList() {
 
       try {
         await deleteTransaction(id);
-
-        // Remove it from selection if selected
         setSelectedIds((prev) =>
           prev.filter((selectedId) => selectedId !== id),
         );
@@ -219,10 +192,6 @@ export default function TransactionList() {
 
       return;
     }
-
-    // ----------------------------------------------
-    // BULK DELETE
-    // ----------------------------------------------
 
     if (deleteModal.type === "bulk") {
       const idsToDelete = [...selectedIds];
@@ -237,7 +206,6 @@ export default function TransactionList() {
 
       try {
         await Promise.all(idsToDelete.map((id) => deleteTransaction(id)));
-
         setSelectedIds([]);
       } finally {
         setIsBulkDeleting(false);
@@ -245,8 +213,20 @@ export default function TransactionList() {
     }
   };
 
+  // Helper to format clean primary & secondary labels
+  const getDisplayLabels = (txn) => {
+    const merchant = txn.merchant?.trim();
+    const note = txn.note?.trim();
+    const primary = merchant || note || txn.category || "Transaction";
+    const secondary =
+      merchant && note && note.toLowerCase() !== merchant.toLowerCase()
+        ? note
+        : null;
+    return { primary, secondary };
+  };
+
   // --------------------------------------------------
-  // LOADING
+  // LOADING & EMPTY STATES
   // --------------------------------------------------
 
   if (loading) {
@@ -263,10 +243,6 @@ export default function TransactionList() {
       </div>
     );
   }
-
-  // --------------------------------------------------
-  // EMPTY STATE
-  // --------------------------------------------------
 
   if (transactions.length === 0) {
     return (
@@ -380,8 +356,6 @@ export default function TransactionList() {
                   nextParams.delete("search");
                 }
 
-                // Manual searching should remove the previous
-                // exact-row highlight.
                 nextParams.delete("highlight");
 
                 setSearchParams(nextParams, { replace: true });
@@ -524,7 +498,6 @@ export default function TransactionList() {
               }}
             >
               <Trash2 size={14} />
-
               {isBulkDeleting ? "Deleting…" : `Delete ${selectedIds.length}`}
             </button>
           </div>
@@ -573,13 +546,7 @@ export default function TransactionList() {
                       fontSize: 12,
                     }}
                   >
-                    {/* SELECT ALL */}
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                        width: 42,
-                      }}
-                    >
+                    <th style={{ padding: "10px 6px", width: 42 }}>
                       <button
                         onClick={toggleSelectAll}
                         className="transaction-checkbox-button"
@@ -597,46 +564,15 @@ export default function TransactionList() {
                         )}
                       </button>
                     </th>
-
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                      }}
-                    >
-                      Date
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                      }}
-                    >
-                      Category
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                      }}
-                    >
+                    <th style={{ padding: "10px 6px" }}>Date</th>
+                    <th style={{ padding: "10px 6px" }}>Category</th>
+                    <th style={{ padding: "10px 6px" }}>
                       Description / Merchant
                     </th>
-
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                        textAlign: "right",
-                      }}
-                    >
+                    <th style={{ padding: "10px 6px", textAlign: "right" }}>
                       Amount
                     </th>
-
-                    <th
-                      style={{
-                        padding: "10px 6px",
-                        width: 60,
-                      }}
-                    />
+                    <th style={{ padding: "10px 6px", width: 60 }} />
                   </tr>
                 </thead>
 
@@ -644,6 +580,7 @@ export default function TransactionList() {
                   {filteredTransactions.map((txn) => {
                     const isIncome = txn.type === "income";
                     const isSelected = selectedIds.includes(txn.id);
+                    const { primary, secondary } = getDisplayLabels(txn);
 
                     return (
                       <tr
@@ -663,12 +600,7 @@ export default function TransactionList() {
                             : undefined,
                         }}
                       >
-                        {/* CHECKBOX */}
-                        <td
-                          style={{
-                            padding: "12px 6px",
-                          }}
-                        >
+                        <td style={{ padding: "12px 6px" }}>
                           <button
                             onClick={() => toggleSelection(txn.id)}
                             className="transaction-checkbox-button"
@@ -686,7 +618,6 @@ export default function TransactionList() {
                           </button>
                         </td>
 
-                        {/* DATE */}
                         <td
                           style={{
                             padding: "12px 6px",
@@ -696,12 +627,7 @@ export default function TransactionList() {
                           {txn.date}
                         </td>
 
-                        {/* CATEGORY */}
-                        <td
-                          style={{
-                            padding: "12px 6px",
-                          }}
-                        >
+                        <td style={{ padding: "12px 6px" }}>
                           <span
                             className={`pill ${
                               isIncome ? "pill-accent" : "pill-alert"
@@ -711,7 +637,6 @@ export default function TransactionList() {
                           </span>
                         </td>
 
-                        {/* DESCRIPTION */}
                         <td
                           style={{
                             padding: "12px 6px",
@@ -724,22 +649,22 @@ export default function TransactionList() {
                               fontWeight: 500,
                             }}
                           >
-                            {txn.note || "—"}
+                            {primary}
                           </div>
 
-                          {txn.merchant && (
+                          {secondary && (
                             <div
                               style={{
                                 fontSize: 12,
                                 color: "var(--color-ink-muted)",
+                                marginTop: 2,
                               }}
                             >
-                              {txn.merchant}
+                              {secondary}
                             </div>
                           )}
                         </td>
 
-                        {/* AMOUNT */}
                         <td
                           style={{
                             padding: "12px 6px",
@@ -761,16 +686,12 @@ export default function TransactionList() {
                             {isIncome ? (
                               <ArrowDownLeft
                                 size={14}
-                                style={{
-                                  color: "var(--color-accent)",
-                                }}
+                                style={{ color: "var(--color-accent)" }}
                               />
                             ) : (
                               <ArrowUpRight
                                 size={14}
-                                style={{
-                                  color: "var(--color-alert)",
-                                }}
+                                style={{ color: "var(--color-alert)" }}
                               />
                             )}
                             {isIncome ? "+" : "-"}₹
@@ -778,7 +699,6 @@ export default function TransactionList() {
                           </span>
                         </td>
 
-                        {/* DELETE */}
                         <td
                           style={{
                             padding: "12px 6px",
@@ -821,7 +741,7 @@ export default function TransactionList() {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                padding: "10px 4px",
+                padding: "10px 6px",
                 borderBottom: "1px solid var(--color-line)",
                 fontSize: 13,
               }}
@@ -840,7 +760,6 @@ export default function TransactionList() {
                 ) : (
                   <Square size={17} />
                 )}
-
                 {allFilteredSelected ? "Deselect all" : "Select all"}
               </button>
 
@@ -859,6 +778,7 @@ export default function TransactionList() {
             {filteredTransactions.map((txn) => {
               const isIncome = txn.type === "income";
               const isSelected = selectedIds.includes(txn.id);
+              const { primary, secondary } = getDisplayLabels(txn);
 
               return (
                 <div
@@ -875,27 +795,28 @@ export default function TransactionList() {
                       : undefined,
                   }}
                 >
-                  {/* Top row */}
+                  {/* Top Row: Checkbox + Merchant/Title + Amount */}
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "flex-start",
-                      gap: 10,
+                      gap: 12,
                     }}
                   >
-                    {/* Checkbox + Date + Category */}
                     <div
                       style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
                         minWidth: 0,
                         flex: 1,
-                        display: "flex",
-                        gap: 9,
                       }}
                     >
                       <button
                         onClick={() => toggleSelection(txn.id)}
                         className="transaction-checkbox-button"
+                        style={{ marginTop: 1, flexShrink: 0 }}
                         aria-label={
                           isSelected
                             ? "Deselect transaction"
@@ -909,24 +830,32 @@ export default function TransactionList() {
                         )}
                       </button>
 
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
                         <div
                           style={{
-                            fontSize: 13,
-                            color: "var(--color-ink-muted)",
-                            marginBottom: 7,
+                            color: "var(--color-ink)",
+                            fontWeight: 600,
+                            fontSize: 14,
+                            lineHeight: 1.35,
+                            overflowWrap: "anywhere",
                           }}
                         >
-                          {txn.date}
+                          {primary}
                         </div>
 
-                        <span
-                          className={`pill ${
-                            isIncome ? "pill-accent" : "pill-alert"
-                          }`}
-                        >
-                          {txn.category || "Uncategorized"}
-                        </span>
+                        {secondary && (
+                          <div
+                            style={{
+                              marginTop: 3,
+                              fontSize: 12,
+                              lineHeight: 1.4,
+                              color: "var(--color-ink-muted)",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {secondary}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -940,91 +869,88 @@ export default function TransactionList() {
                           : "var(--color-ink)",
                         fontWeight: 700,
                         fontSize: 15,
-                        maxWidth: "48%",
-                        overflowWrap: "anywhere",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      <div
+                      <span
                         style={{
-                          display: "flex",
+                          display: "inline-flex",
                           alignItems: "center",
-                          justifyContent: "flex-end",
                           gap: 3,
                         }}
                       >
                         {isIncome ? (
                           <ArrowDownLeft
                             size={14}
-                            style={{
-                              color: "var(--color-accent)",
-                            }}
+                            style={{ color: "var(--color-accent)" }}
                           />
                         ) : (
                           <ArrowUpRight
                             size={14}
-                            style={{
-                              color: "var(--color-alert)",
-                            }}
+                            style={{ color: "var(--color-alert)" }}
                           />
                         )}
                         {isIncome ? "+" : "-"}₹
                         {txn.amount.toLocaleString("en-IN")}
-                      </div>
+                      </span>
                     </div>
                   </div>
 
-                  {/* Description */}
+                  {/* Bottom Row: Date + Category Pill + Delete Button */}
                   <div
                     style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
                       marginTop: 10,
-                      paddingRight: 38,
-                      minWidth: 0,
+                      paddingLeft: 35,
                     }}
                   >
                     <div
                       style={{
-                        color: "var(--color-ink)",
-                        fontWeight: 500,
-                        fontSize: 14,
-                        overflowWrap: "anywhere",
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        minWidth: 0,
                       }}
                     >
-                      {txn.note || "—"}
-                    </div>
-
-                    {txn.merchant && (
-                      <div
+                      <span
                         style={{
-                          marginTop: 3,
                           fontSize: 12,
                           color: "var(--color-ink-muted)",
-                          overflowWrap: "anywhere",
                         }}
                       >
-                        {txn.merchant}
-                      </div>
-                    )}
-                  </div>
+                        {txn.date}
+                      </span>
 
-                  {/* Delete button */}
-                  <button
-                    className="btn btn-ghost"
-                    style={{
-                      position: "absolute",
-                      right: 8,
-                      bottom: 8,
-                      padding: "5px 7px",
-                      color: "var(--color-alert)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                    }}
-                    disabled={deletingId === txn.id || isBulkDeleting}
-                    onClick={() => handleDelete(txn.id)}
-                    title="Delete transaction"
-                    aria-label="Delete transaction"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                      <span
+                        className={`pill ${
+                          isIncome ? "pill-accent" : "pill-alert"
+                        }`}
+                      >
+                        {txn.category || "Uncategorized"}
+                      </span>
+                    </div>
+
+                    <button
+                      className="btn btn-ghost"
+                      style={{
+                        padding: "5px 7px",
+                        color: "var(--color-alert)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        flexShrink: 0,
+                      }}
+                      disabled={deletingId === txn.id || isBulkDeleting}
+                      onClick={() => handleDelete(txn.id)}
+                      title="Delete transaction"
+                      aria-label="Delete transaction"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1147,7 +1073,6 @@ export default function TransactionList() {
                 }}
               >
                 <Trash2 size={14} />
-
                 {deleteModal.type === "bulk"
                   ? `Delete ${selectedIds.length}`
                   : "Delete"}
@@ -1165,6 +1090,17 @@ export default function TransactionList() {
         {`
           .mobile-transactions-list {
             display: none;
+          }
+
+          .mobile-transaction-item {
+            position: relative;
+            padding: 14px 8px;
+            border-bottom: 1px solid var(--color-line);
+            transition: background-color 0.25s ease, box-shadow 0.25s ease;
+          }
+
+          .mobile-transaction-item:last-child {
+            border-bottom: none;
           }
 
           .transaction-checkbox-button {
@@ -1289,8 +1225,7 @@ export default function TransactionList() {
             }
 
             .mobile-transaction-item {
-              padding-left: 4px;
-              padding-right: 4px;
+              padding: 13px 4px;
             }
 
             .mobile-transaction-item .pill {
