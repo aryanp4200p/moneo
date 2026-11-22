@@ -1,12 +1,12 @@
-
 from __future__ import annotations
 
+import asyncio
 import io
+import logging
 import os
 import re
 from datetime import date as Date, datetime
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -19,40 +19,53 @@ from core.security import get_current_user
 from models.transaction import Transaction
 from services.auto_categorizer import auto_categorize
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/receipt-ocr", tags=["Receipt OCR"])
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_AMOUNT = Decimal("999999999999.99")
+
+# Validate the actual decoded image format as well as the request content type.
 ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
-DEFAULT_TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "application/octet-stream",  # Some mobile browsers send this.
+}
+
+# Do not hard-code a Windows path on Render/Linux.
+TESSERACT_CMD = os.getenv("TESSERACT_CMD")
+OCR_TIMEOUT_SECONDS = int(os.getenv("OCR_TIMEOUT_SECONDS", "12"))
+MAX_IMAGE_DIMENSION = int(os.getenv("OCR_MAX_IMAGE_DIMENSION", "2200"))
 
 
 def _get_ocr_dependencies():
+    """Load optional OCR libraries only when an OCR request is made."""
     try:
-        from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+        from PIL import Image, ImageEnhance, ImageFilter, ImageOps
         import pytesseract
     except ImportError as exc:
+        logger.exception("OCR Python dependencies are missing")
         raise HTTPException(
             status_code=503,
-            detail="Install Pillow and pytesseract in your backend virtual environment.",
+            detail="OCR dependencies are missing. Install Pillow and pytesseract.",
         ) from exc
 
-    configured_path = os.getenv("TESSERACT_CMD", DEFAULT_TESSERACT_PATH)
-    if configured_path and Path(configured_path).is_file():
-        pytesseract.pytesseract.tesseract_cmd = configured_path
+    if TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
     return Image, ImageOps, ImageEnhance, ImageFilter, pytesseract
 
 
 def _contains_keyword(text: str, keywords: list[str]) -> bool:
-    return any(
-        re.search(
-            r"(?<!\w)" + re.escape(word).replace(r"\ ", r"\s+") + r"(?!\w)",
-            text,
-            re.IGNORECASE,
-        )
-        for word in keywords
-    )
+    for word in keywords:
+        pattern = r"(?<!\w)" + re.escape(word).replace(r"\ ", r"\s+") + r"(?!\w)"
+        if re.search(pattern, text or "", re.IGNORECASE):
+            return True
+    return False
 
 
 def _guess_receipt_category(
@@ -61,18 +74,12 @@ def _guess_receipt_category(
 ) -> Optional[str]:
     combined = f"{merchant or ''}\n{text or ''}".lower()
 
-    # Restaurants often include "Hotel" in their Indian business names.
     if _contains_keyword(
         combined,
         [
-            "family restaurant",
-            "food total",
-            "restaurant",
-            "food bill",
-            "dining",
-            "food court",
-            "cafe",
-            "catering",
+            "restaurant", "food bill", "food total", "dining",
+            "food court", "cafe", "catering", "starbucks",
+            "coffee", "bakery", "pizza", "burger",
         ],
     ):
         return "Food"
@@ -80,19 +87,10 @@ def _guess_receipt_category(
     if _contains_keyword(
         combined,
         [
-            "room rent",
-            "room charges",
-            "room tariff",
-            "accommodation",
-            "lodging",
-            "check in",
-            "check out",
-            "guest house",
-            "guesthouse",
-            "stay charges",
-            "suite charges",
-            "resort",
-            "motel",
+            "room rent", "room charges", "room tariff",
+            "accommodation", "lodging", "check in", "check out",
+            "guest house", "guesthouse", "stay charges",
+            "suite charges", "resort", "motel", "hotel booking",
         ],
     ):
         return "Travel"
@@ -104,70 +102,95 @@ def _guess_receipt_category(
             transaction_type="expense",
         )
     except Exception:
+        logger.exception("Automatic receipt categorization failed")
         return None
 
 
+def _parse_decimal(value: str) -> Optional[Decimal]:
+    value = value.strip().replace(",", "")
+    try:
+        amount = Decimal(value)
+        if amount.is_finite() and Decimal("0") < amount <= MAX_AMOUNT:
+            return amount
+    except InvalidOperation:
+        pass
+    return None
+
+
 def _extract_amount(text: str) -> Optional[float]:
-    # First inspect lines explicitly labelled as the final total.
-    total_label = re.compile(
-        r"\b(?:grand\s+total|net\s+total|amount\s+payable|"
-        r"total\s+amount|amount\s+due|balance\s+due|"
-        r"total\s+due|food\s+total|total)\b",
-        re.IGNORECASE,
-    )
+    """
+    Prefer explicitly labelled payable/total lines.
+    Avoid subtotal, tax, discount, change and item-price lines.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
     amount_pattern = re.compile(
-        r"(?<!\w)([0-9][0-9,]*(?:\.[0-9]{1,2})?)(?!\w)"
-    )
-
-    labelled = []
-
-    for line in text.splitlines():
-        if not total_label.search(line):
-            continue
-        if re.search(r"\bsub\s*total\b", line, re.IGNORECASE):
-            continue
-
-        for match in amount_pattern.finditer(line):
-            try:
-                amount = Decimal(match.group(1).replace(",", ""))
-                if amount.is_finite() and 0 < amount <= MAX_AMOUNT:
-                    labelled.append(amount)
-            except InvalidOperation:
-                pass
-
-    if labelled:
-        return float(labelled[-1])
-
-    # Fallback to amounts explicitly preceded by a currency symbol/code.
-    currency_pattern = re.compile(
-        r"(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)\s*"
-        r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)",
+        r"(?<![\w])(?:₹|Rs\.?|INR)?\s*"
+        r"([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?"
+        r"|[0-9]+(?:\.[0-9]{1,2})?)",
         re.IGNORECASE,
     )
-    candidates = []
 
-    for match in currency_pattern.finditer(text):
-        try:
-            amount = Decimal(match.group(1).replace(",", ""))
-            if amount.is_finite() and 0 < amount <= MAX_AMOUNT:
-                candidates.append(amount)
-        except InvalidOperation:
-            pass
+    positive_labels = re.compile(
+        r"\b(grand\s*total|net\s*total|amount\s*payable|"
+        r"total\s*amount|amount\s*due|balance\s*due|"
+        r"total\s*due|total\s*paid|payable|total)\b",
+        re.IGNORECASE,
+    )
+    negative_labels = re.compile(
+        r"\b(sub\s*total|subtotal|tax|gst|cgst|sgst|"
+        r"discount|change|cash\s*tendered|round\s*off|"
+        r"savings|advance)\b",
+        re.IGNORECASE,
+    )
 
-    return float(max(candidates)) if candidates else None
+    labelled_candidates: list[Decimal] = []
+    currency_candidates: list[Decimal] = []
+
+    for line in lines:
+        matches = list(amount_pattern.finditer(line))
+        if not matches:
+            continue
+
+        values = [
+            amount
+            for match in matches
+            if (amount := _parse_decimal(match.group(1))) is not None
+        ]
+        if not values:
+            continue
+
+        if positive_labels.search(line) and not negative_labels.search(line):
+            # The last amount on a total line is commonly the payable amount.
+            labelled_candidates.append(values[-1])
+
+        if re.search(r"(₹|Rs\.?|INR|\$|€|£)", line, re.IGNORECASE):
+            currency_candidates.extend(values)
+
+    if labelled_candidates:
+        return float(labelled_candidates[-1])
+
+    if currency_candidates:
+        return float(max(currency_candidates))
+
+    # Last fallback: largest plausible amount in the receipt.
+    all_candidates: list[Decimal] = []
+    for line in lines:
+        if negative_labels.search(line):
+            continue
+        for match in amount_pattern.finditer(line):
+            amount = _parse_decimal(match.group(1))
+            if amount is not None:
+                all_candidates.append(amount)
+
+    return float(max(all_candidates)) if all_candidates else None
 
 
 def _extract_date(text: str) -> tuple[Date, bool]:
-    # Handles dates such as 20-Oct-26, 20/10/2026, and 2026-10-20.
+    """Extract common Indian and international receipt date formats."""
     patterns = [
-        (
-            r"\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b",
-            "ymd",
-        ),
-        (
-            r"\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b",
-            "dmy",
-        ),
+        (r"\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b", "ymd"),
+        (r"\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b", "dmy"),
     ]
 
     for pattern, order in patterns:
@@ -185,10 +208,8 @@ def _extract_date(text: str) -> tuple[Date, bool]:
                 continue
 
     textual_pattern = (
-        r"\b(\d{1,2})[-\s]+([A-Za-z]{3,9})"
-        r"[-,\s]+(\d{2,4})\b"
+        r"\b(\d{1,2})[-/\s]+([A-Za-z]{3,9})[-/,\s]+(\d{2,4})\b"
     )
-
     for match in re.finditer(textual_pattern, text):
         day, month_text, year = match.groups()
         if len(year) == 2:
@@ -203,7 +224,6 @@ def _extract_date(text: str) -> tuple[Date, bool]:
             except ValueError:
                 continue
 
-    # Do not pretend today's date was extracted from the receipt.
     return Date.today(), False
 
 
@@ -215,24 +235,164 @@ def _clean_text(value: Any, max_length: int = 500) -> Optional[str]:
 
 
 def _guess_merchant(lines: list[str]) -> Optional[str]:
-    # Specific fallback for the example receipt.
-    for line in lines[:12]:
-        if re.search(r"\bhotel\s+celebration\b", line, re.IGNORECASE):
-            return "HOTEL CELEBRATION"
-
     ignored = re.compile(
         r"\b(tax invoice|invoice|receipt|cash memo|bill no|"
-        r"invoice no|gstin|date|original for recipient|duplicate)\b",
+        r"invoice no|gstin|date|original for recipient|"
+        r"duplicate|customer copy|merchant copy)\b",
         re.IGNORECASE,
     )
 
-    for line in lines[:8]:
+    for line in lines[:10]:
         candidate = _clean_text(line, 120)
-        if candidate and not ignored.search(candidate):
-            if re.search(r"[A-Za-z]", candidate):
-                return candidate
+        if not candidate or ignored.search(candidate):
+            continue
+        if re.search(r"[A-Za-z]", candidate):
+            return candidate
 
     return _clean_text(lines[0], 120) if lines else None
+
+
+def _prepare_image_variants(raw: bytes):
+    """
+    Return a small set of OCR-friendly variants.
+    Keep the original grayscale image: aggressive enhancement can hurt
+    already-clear receipts.
+    """
+    Image, ImageOps, ImageEnhance, ImageFilter, _ = _get_ocr_dependencies()
+
+    try:
+        with Image.open(io.BytesIO(raw)) as original:
+            image_format = (original.format or "").upper()
+            if image_format not in ALLOWED_IMAGE_FORMATS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unsupported image format. Upload a JPG, PNG or WEBP image.",
+                )
+
+            # Correct phone-camera orientation from EXIF metadata.
+            image = ImageOps.exif_transpose(original).convert("RGB")
+
+            # Do not enlarge small images; only reduce very large images.
+            image.thumbnail(
+                (MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION),
+                Image.Resampling.LANCZOS,
+            )
+
+            gray = ImageOps.grayscale(image)
+            variants = [("grayscale", gray)]
+
+            # Mild contrast variant, useful for faint thermal receipts.
+            contrast = ImageEnhance.Contrast(gray).enhance(1.35)
+            variants.append(("contrast", contrast))
+
+            # Adaptive thresholding is optional and only a fallback.
+            try:
+                from PIL import ImageFilter
+                threshold = contrast.point(
+                    lambda pixel: 255 if pixel > 165 else 0
+                )
+                variants.append(("threshold", threshold))
+            except Exception:
+                logger.debug("Could not create threshold image", exc_info=True)
+
+            return variants
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Could not decode uploaded receipt image")
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is not a valid supported image.",
+        ) from exc
+
+
+def _ocr_score(text: str) -> int:
+    """A simple heuristic to rank OCR attempts, not a true confidence score."""
+    if not text:
+        return 0
+
+    useful_chars = sum(char.isalnum() for char in text)
+    lines = [line for line in text.splitlines() if line.strip()]
+    score = useful_chars + min(len(lines), 30) * 3
+
+    if re.search(r"\b(total|amount|payable|date|invoice|bill)\b", text, re.I):
+        score += 25
+    if re.search(r"(₹|Rs\.?|INR)", text, re.I):
+        score += 10
+
+    return score
+
+
+def _run_ocr(raw: bytes) -> str:
+    """Run a bounded number of OCR attempts and select the most useful text."""
+    _, _, _, _, pytesseract = _get_ocr_dependencies()
+    variants = _prepare_image_variants(raw)
+
+    attempts = [
+        ("grayscale", "--oem 3 --psm 6"),
+        ("contrast", "--oem 3 --psm 6"),
+        ("grayscale", "--oem 3 --psm 11"),
+        ("threshold", "--oem 3 --psm 6"),
+    ]
+
+    by_name = dict(variants)
+    best_text = ""
+    best_score = 0
+    last_error: Optional[Exception] = None
+
+    for variant_name, config in attempts:
+        image = by_name.get(variant_name)
+        if image is None:
+            continue
+
+        try:
+            text = pytesseract.image_to_string(
+                image,
+                config=config,
+                timeout=OCR_TIMEOUT_SECONDS,
+            ).strip()
+
+            score = _ocr_score(text)
+            if score > best_score:
+                best_text = text
+                best_score = score
+
+            # Stop early when a result contains enough useful receipt text.
+            if len(text) >= 40 and score >= 65:
+                break
+
+        except RuntimeError as exc:
+            last_error = exc
+            logger.warning(
+                "OCR attempt timed out or failed (variant=%s, config=%s)",
+                variant_name,
+                config,
+            )
+            # Avoid spending the whole request on repeated timeouts.
+            continue
+        except Exception as exc:
+            last_error = exc
+            logger.exception("Tesseract OCR attempt failed")
+            continue
+
+    if not best_text:
+        if last_error and "timeout" in str(last_error).lower():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "OCR processing took too long. Try cropping the receipt "
+                    "or uploading a smaller image."
+                ),
+            )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No readable text was found. Check that the receipt is in focus, "
+                "upright and well lit."
+            ),
+        )
+
+    return best_text
 
 
 class ReceiptSaveRequest(BaseModel):
@@ -259,79 +419,38 @@ async def preview_receipt(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),
 ):
-    content_type = (file.content_type or "").lower()
-    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+    """
+    Read a receipt and return editable extracted fields.
+    This endpoint does not save a transaction.
+    """
+    content_type = (file.content_type or "").lower().split(";")[0].strip()
+    if content_type and content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail="Upload a JPG, PNG, or WEBP receipt image.",
+            detail="Upload a JPG, PNG or WEBP receipt image.",
         )
 
     raw = await file.read(MAX_FILE_SIZE + 1)
+    await file.close()
+
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
     if len(raw) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller.")
-
-    Image, ImageOps, ImageEnhance, ImageFilter, pytesseract = (
-        _get_ocr_dependencies()
-    )
-
-    try:
-        
-        with Image.open(io.BytesIO(raw)) as original:
-            image = ImageOps.exif_transpose(original).convert("RGB")
-
-            # Resize large images without enlarging them again.
-            image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
-
-            # Enhance receipt readability while keeping processing efficient.
-            image = ImageOps.grayscale(image)
-            image = ImageEnhance.Contrast(image).enhance(1.8)
-            image = ImageEnhance.Sharpness(image).enhance(1.5)
-
-            extracted_text = pytesseract.image_to_string(
-                image,
-                config="--oem 3 --psm 6",
-                timeout=30,
-            ).strip()
-
-            # Retry only when the first OCR result is too short.
-            if len(extracted_text) < 20:
-                retry_text = pytesseract.image_to_string(
-                    image,
-                    config="--oem 3 --psm 11",
-                    timeout=10,
-                ).strip()
-
-                if len(retry_text) > len(extracted_text):
-                    extracted_text = retry_text
-
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        if "TesseractNotFoundError" in type(exc).__name__:
-            raise HTTPException(
-                status_code=503,
-                detail="Tesseract OCR was not found. Check TESSERACT_CMD.",
-            ) from exc
-        if "timeout" in str(exc).lower():
-            raise HTTPException(
-                status_code=422,
-                detail="OCR timed out. Try a clearer or smaller image.",
-            ) from exc
         raise HTTPException(
-            status_code=422,
-            detail="Could not read the image. Try a clear, upright receipt.",
-        ) from exc
-
-    if not extracted_text:
-        raise HTTPException(
-            status_code=422,
-            detail="No readable text found. Try a clearer image.",
+            status_code=413,
+            detail="Image must be 10 MB or smaller.",
         )
 
-    lines = [line.strip() for line in extracted_text.splitlines() if line.strip()]
+    # Tesseract and Pillow are synchronous; run them off the async event loop.
+    extracted_text = await asyncio.to_thread(_run_ocr, raw)
+
+    lines = [
+        line.strip()
+        for line in extracted_text.splitlines()
+        if line.strip()
+    ]
+
     merchant = _guess_merchant(lines)
     amount = _extract_amount(extracted_text)
     receipt_date, date_found = _extract_date(extracted_text)
@@ -345,7 +464,8 @@ async def preview_receipt(
         "category": category,
         "raw_text": extracted_text[:5000],
         "confidence_note": (
-            "Review the merchant, amount, date, and category before saving."
+            "OCR results are estimates. Review the merchant, amount, date "
+            "and category before saving."
         ),
     }
 
@@ -356,9 +476,14 @@ def save_receipt_transaction(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """Save the user-reviewed receipt fields as an expense transaction."""
     amount = payload.amount
+
     if not amount.is_finite() or amount <= 0 or amount > MAX_AMOUNT:
-        raise HTTPException(status_code=400, detail="Enter a valid positive amount.")
+        raise HTTPException(
+            status_code=400,
+            detail="Enter a valid positive amount.",
+        )
 
     merchant = _clean_text(payload.merchant, 120)
     note = _clean_text(payload.note, 1000)
@@ -386,6 +511,7 @@ def save_receipt_transaction(
         db.refresh(txn)
     except SQLAlchemyError as exc:
         db.rollback()
+        logger.exception("Could not save receipt transaction")
         raise HTTPException(
             status_code=500,
             detail="Could not save the receipt transaction. Please try again.",
