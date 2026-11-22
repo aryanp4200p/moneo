@@ -4,11 +4,9 @@ import {
   CheckCircle2,
   FileImage,
   FileText,
-  Lightbulb,
   Loader2,
   ScanLine,
   ShieldCheck,
-  Sparkles,
   Tag,
   UploadCloud,
   X,
@@ -43,6 +41,7 @@ const iconTileStyle = {
 
 export default function ReceiptScannerPage() {
   const inputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [file, setFile] = useState(null);
   const [data, setData] = useState(null);
@@ -82,6 +81,7 @@ export default function ReceiptScannerPage() {
     setSaved(false);
     setError("");
     if (inputRef.current) inputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const scan = async () => {
@@ -135,7 +135,6 @@ export default function ReceiptScannerPage() {
   };
 
   const mutedText = { color: "var(--color-ink-muted, #b6c2d2)" };
-  const headingStyle = { margin: 0, fontSize: 15, fontWeight: 700 };
   const fieldStyle = {
     display: "grid",
     gap: 7,
@@ -158,22 +157,23 @@ export default function ReceiptScannerPage() {
       <style>{`
         .receipt-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; align-items:stretch; width:100%; }
         .receipt-dropzone {
-  width: 100%;
-  min-height: clamp(280px, 38vw, 390px);
-  box-sizing: border-box;
-  border: 1.5px dashed var(--color-line, #3b4b61);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: clamp(18px, 4vw, 36px);
-  transition: border-color 0.2s, background 0.2s;
-  background: var(--color-surface, #1e293b) !important;
-}
+          width: 100%;
+          min-height: clamp(280px, 38vw, 390px);
+          box-sizing: border-box;
+          border: 1.5px dashed var(--color-line, #3b4b61);
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: clamp(18px, 4vw, 36px);
+          transition: border-color 0.2s, background 0.2s;
+          background: var(--color-surface, #1e293b) !important;
+        }
         .receipt-drop-content { width:100%; max-width:620px; margin:0 auto; }
         .receipt-heading { text-align:center; }
         .receipt-subtitle { max-width:560px; margin:0 auto 20px; line-height:1.6; }
+        .receipt-upload-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:12px; }
         .receipt-feature-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; padding:24px 4px 2px; }
         .receipt-feature { display:flex; align-items:flex-start; gap:12px; min-width:0; }
         .receipt-feature-copy { min-width:0; overflow-wrap:anywhere; }
@@ -184,105 +184,92 @@ export default function ReceiptScannerPage() {
         .receipt-primary:hover { filter:brightness(1.06); transform:translateY(-1px); }
         .receipt-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
         .receipt-secondary { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--color-line,#475569); border-radius:11px; padding:10px 14px; background:transparent; color:inherit; cursor:pointer; }
+        .receipt-upload-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; border:1px solid var(--color-line,#475569); border-radius:13px; padding:14px 22px; font-weight:600; background:rgba(148,163,184,.08); color:var(--color-ink,#f8fafc); cursor:pointer; }
         .receipt-badge { display:inline-flex; align-items:center; justify-content:center; border-radius:999px; padding:7px 12px; font-size:12px; font-weight:700; background:rgba(148,163,184,.12); color:var(--color-ink,#e2e8f0); }
         .receipt-step { display:flex; align-items:flex-start; gap:12px; min-width:0; }
         .receipt-step p { margin:5px 0 0; font-size:12px; line-height:1.5; color:var(--color-ink-muted,#b6c2d2); }
-        /* Remove unwanted background block behind the page heading */
-.receipt-heading {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* Keep the heading typography clean and consistent */
-.receipt-heading h1 {
-  color: var(--color-ink);
-  letter-spacing: -0.035em;
-}
-
-.receipt-heading .dashboard-eyebrow {
-  color: var(--color-accent);
-}
-
-.receipt-heading .receipt-subtitle {
-  color: var(--color-ink-muted);
-}
-        
-/* Receipt scanner — visual polish only */
-.receipt-dropzone {
-  border-color: var(--color-line);
-  
-  background: 
-    linear-gradient(
-      145deg,
-      var(--color-accent-soft),
-      transparent 75%
-    );
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.receipt-dropzone:hover,
-.receipt-dropzone.dragging {
-  border-color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px var(--color-accent-soft);
-}
-
-.receipt-primary {
-  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.16);
-  transition:
-    filter 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease;
-}
-
-.receipt-primary:hover:not(:disabled) {
-  filter: brightness(1.05);
-  box-shadow: 0 6px 16px rgba(20, 184, 166, 0.22);
-}
-
-.receipt-primary:focus-visible,
-.receipt-secondary:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
-}
-
-.receipt-secondary {
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease;
-}
-
-.receipt-secondary:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-}
-
-.receipt-field {
-  transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.receipt-field:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
-  outline: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .receipt-dropzone,
-  .receipt-primary,
-  .receipt-secondary,
-  .receipt-field {
-    transition: none !important;
-  }
-}
-
+        .receipt-heading {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+        .receipt-heading h1 {
+          color: var(--color-ink);
+          letter-spacing: -0.035em;
+        }
+        .receipt-heading .dashboard-eyebrow {
+          color: var(--color-accent);
+        }
+        .receipt-heading .receipt-subtitle {
+          color: var(--color-ink-muted);
+        }
+        .receipt-dropzone {
+          border-color: var(--color-line);
+          background:
+            linear-gradient(
+              145deg,
+              var(--color-accent-soft),
+              transparent 75%
+            );
+          transition:
+            border-color 180ms ease,
+            background-color 180ms ease,
+            box-shadow 180ms ease;
+        }
+        .receipt-dropzone:hover,
+        .receipt-dropzone.dragging {
+          border-color: var(--color-accent);
+          box-shadow: inset 0 0 0 1px var(--color-accent-soft);
+        }
+        .receipt-primary {
+          box-shadow: 0 4px 12px rgba(20, 184, 166, 0.16);
+          transition:
+            filter 180ms ease,
+            box-shadow 180ms ease,
+            transform 180ms ease;
+        }
+        .receipt-primary:hover:not(:disabled) {
+          filter: brightness(1.05);
+          box-shadow: 0 6px 16px rgba(20, 184, 166, 0.22);
+        }
+        .receipt-primary:focus-visible,
+        .receipt-secondary:focus-visible,
+        .receipt-upload-btn:focus-visible {
+          outline: 2px solid var(--color-accent);
+          outline-offset: 3px;
+        }
+        .receipt-secondary,
+        .receipt-upload-btn {
+          transition:
+            border-color 180ms ease,
+            background-color 180ms ease,
+            color 180ms ease;
+        }
+        .receipt-secondary:hover,
+        .receipt-upload-btn:hover {
+          border-color: var(--color-accent);
+          background: var(--color-accent-soft);
+          color: var(--color-accent);
+        }
+        .receipt-field {
+          transition:
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+        }
+        .receipt-field:focus {
+          border-color: var(--color-accent);
+          box-shadow: 0 0 0 3px var(--color-accent-soft);
+          outline: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .receipt-dropzone,
+          .receipt-primary,
+          .receipt-secondary,
+          .receipt-upload-btn,
+          .receipt-field {
+            transition: none !important;
+          }
+        }
         .receipt-field { width:100%; box-sizing:border-box; }
         @media (max-width: 760px) {
           .receipt-feature-grid { grid-template-columns:1fr; gap:16px; }
@@ -291,9 +278,10 @@ export default function ReceiptScannerPage() {
         @media (max-width: 480px) {
           .receipt-dropzone { min-height:270px; padding:18px 14px; }
           .receipt-feature-grid { padding:20px 0 0; }
-          .receipt-primary { width:100%; max-width:320px; }
+          .receipt-upload-actions { flex-direction:column; width:100%; }
+          .receipt-primary,
+          .receipt-upload-btn { width:100%; max-width:320px; }
         }
-          
       `}</style>
 
       <header
@@ -369,7 +357,7 @@ export default function ReceiptScannerPage() {
                     <UploadCloud size={32} />
                   </div>
                   <h2 style={{ margin: "0 0 8px", fontSize: 21 }}>
-                    Upload a receipt
+                    Capture or upload a receipt
                   </h2>
                   <p
                     style={{
@@ -378,17 +366,43 @@ export default function ReceiptScannerPage() {
                       lineHeight: 1.6,
                     }}
                   >
-                    Drag and drop your receipt here, or choose an image from
-                    your device.
+                    Take a live photo with your camera, drag and drop, or browse
+                    files from your device.
                   </p>
-                  <button
-                    type="button"
-                    className="receipt-primary"
-                    onClick={() => inputRef.current?.click()}
-                  >
-                    <FileImage size={18} />
-                    Choose receipt
-                  </button>
+
+                  <div className="receipt-upload-actions">
+                    <button
+                      type="button"
+                      className="receipt-primary"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera size={18} />
+                      Take photo
+                    </button>
+                    <button
+                      type="button"
+                      className="receipt-upload-btn"
+                      onClick={() => inputRef.current?.click()}
+                    >
+                      <FileImage size={18} />
+                      Upload file
+                    </button>
+                  </div>
+
+                  {/* Direct rear camera capture on mobile */}
+                  <input
+                    ref={cameraInputRef}
+                    hidden
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="environment"
+                    onChange={(event) => {
+                      chooseFile(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+
+                  {/* Standard gallery / file picker */}
                   <input
                     ref={inputRef}
                     hidden
@@ -399,6 +413,7 @@ export default function ReceiptScannerPage() {
                       event.target.value = "";
                     }}
                   />
+
                   <p style={{ ...mutedText, fontSize: 12, margin: "16px 0 0" }}>
                     JPG, PNG or WEBP · Maximum file size 10 MB
                   </p>

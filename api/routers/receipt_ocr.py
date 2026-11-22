@@ -38,8 +38,8 @@ ALLOWED_CONTENT_TYPES = {
 
 # Do not hard-code a Windows path on Render/Linux.
 TESSERACT_CMD = os.getenv("TESSERACT_CMD")
-OCR_TIMEOUT_SECONDS = int(os.getenv("OCR_TIMEOUT_SECONDS", "12"))
-MAX_IMAGE_DIMENSION = int(os.getenv("OCR_MAX_IMAGE_DIMENSION", "2200"))
+OCR_TIMEOUT_SECONDS = int(os.getenv("OCR_TIMEOUT_SECONDS", "20"))
+MAX_IMAGE_DIMENSION = int(os.getenv("OCR_MAX_IMAGE_DIMENSION", "1200"))
 
 
 def _get_ocr_dependencies():
@@ -331,8 +331,6 @@ def _run_ocr(raw: bytes) -> str:
     attempts = [
         ("grayscale", "--oem 3 --psm 6"),
         ("contrast", "--oem 3 --psm 6"),
-        ("grayscale", "--oem 3 --psm 11"),
-        ("threshold", "--oem 3 --psm 6"),
     ]
 
     by_name = dict(variants)
@@ -369,7 +367,7 @@ def _run_ocr(raw: bytes) -> str:
                 config,
             )
             # Avoid spending the whole request on repeated timeouts.
-            continue
+            break
         except Exception as exc:
             last_error = exc
             logger.exception("Tesseract OCR attempt failed")
