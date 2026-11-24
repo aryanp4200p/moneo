@@ -128,7 +128,7 @@ export const useTransactionStore = create((set, get) => ({
   },
 
   // =========================================================
-  // CSV PREVIEW
+  // CSV & IMAGE STATEMENT PREVIEW
   // =========================================================
 
   previewCSV: async (file) => {
@@ -146,12 +146,30 @@ export const useTransactionStore = create((set, get) => ({
   },
 
   // =========================================================
-  // CSV IMPORT
+  // CSV & IMAGE STATEMENT IMPORT
   // =========================================================
 
   importCSV: async (transactions) => {
+    const normalizedTransactions = transactions.map((tx) => {
+      const debit = Number(tx.debit) || 0;
+      const credit = Number(tx.credit) || 0;
+      const isCredit = credit > 0;
+
+      return {
+        ...tx,
+        particulars: tx.particulars || tx.merchant || tx.note || "",
+        merchant: tx.merchant || tx.particulars || "",
+        note: tx.note || tx.particulars || "",
+        cheque_no: tx.cheque_no || "",
+        debit,
+        credit,
+        amount: tx.amount ?? (isCredit ? credit : debit),
+        type: tx.type || (isCredit ? "income" : "expense"),
+      };
+    });
+
     const { data } = await api.post("/transactions/import-csv", {
-      transactions,
+      transactions: normalizedTransactions,
     });
 
     const imported = Array.isArray(data.imported) ? data.imported : [];
@@ -283,8 +301,8 @@ export const useTransactionStore = create((set, get) => ({
 
     try {
       /*
-       * First process any recurring transactions
-       * whose due date has arrived.
+- First process any recurring transactions
+- whose due date has arrived.
        */
       await api.post("/recurring-transactions/process-due");
 
@@ -300,9 +318,9 @@ export const useTransactionStore = create((set, get) => ({
       });
 
       /*
-       * Refresh normal transactions so any
-       * automatically generated recurring
-       * transactions appear immediately.
+- Refresh normal transactions so any
+- automatically generated recurring
+- transactions appear immediately.
        */
       await get().fetchTransactions();
 
@@ -337,8 +355,8 @@ export const useTransactionStore = create((set, get) => ({
       });
 
       /*
-       * Refresh both recurring and normal
-       * transactions after processing.
+- Refresh both recurring and normal
+- transactions after processing.
        */
       await get().fetchTransactions();
 

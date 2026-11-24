@@ -1,11 +1,85 @@
 import re
 
-
 # ============================================================
 # CATEGORY KEYWORDS
 # ============================================================
+# Ordered from most specific to broadest so specific merchants
+# (e.g. "Apollo Medical Store") match before generic words.
 
 CATEGORY_KEYWORDS = {
+    "Income": [
+        "salary credit",
+        "salary",
+        "freelance payment",
+        "freelance",
+        "income",
+        "bonus",
+        "payroll",
+        "stipend",
+        "dividend",
+        "interest credit",
+        "int pd",
+        "refund",
+        "cashback",
+    ],
+    "Healthcare": [
+        "medical store",
+        "medical",
+        "medicine",
+        "pharmacy",
+        "apollo",
+        "medplus",
+        "pharmeasy",
+        "1mg",
+        "hospital",
+        "doctor",
+        "clinic",
+        "healthcare",
+        "diagnostic",
+        "pathology",
+        "pathology lab",
+        "diagnostic lab",
+    ],
+    "Utilities": [
+        "electricity",
+        "electric bill",
+        "mahavitaran",
+        "bescom",
+        "tata power",
+        "adani electricity",
+        "water bill",
+        "gas bill",
+        "mahanagar gas",
+        "indraprastha gas",
+        "internet",
+        "broadband",
+        "wifi",
+        "jio fiber",
+        "airtel xstream",
+        "act fibernet",
+        "maintenance",
+    ],
+    "Transport": [
+        "uber",
+        "ola",
+        "rapido",
+        "petrol",
+        "fuel",
+        "hp petrol",
+        "hpcl",
+        "indian oil",
+        "iocl",
+        "bharat petroleum",
+        "bpcl",
+        "parking",
+        "fastag",
+        "metro",
+        "bus",
+        "train",
+        "irctc",
+        "redbus",
+        "makemytrip",
+    ],
     "Food": [
         "swiggy",
         "zomato",
@@ -18,43 +92,18 @@ CATEGORY_KEYWORDS = {
         "kfc",
         "starbucks",
         "cafe",
+        "bakery",
         "blinkit",
         "zepto",
         "instamart",
+        "bigbasket",
     ],
-
-    "Shopping": [
-        "amazon",
-        "flipkart",
-        "myntra",
-        "meesho",
-        "shopping",
-        "mall",
-        "store",
-        "retail",
-        "ajio",
-    ],
-
-    "Transport": [
-        "uber",
-        "ola",
-        "rapido",
-        "petrol",
-        "fuel",
-        "hp petrol",
-        "indian oil",
-        "bharat petroleum",
-        "parking",
-        "metro",
-        "bus",
-        "train",
-        "irctc",
-    ],
-
     "Entertainment": [
         "netflix",
         "prime video",
+        "amazon prime",
         "hotstar",
+        "disney",
         "spotify",
         "youtube premium",
         "movie",
@@ -62,45 +111,10 @@ CATEGORY_KEYWORDS = {
         "pvr",
         "inox",
         "bookmyshow",
-        "game",
+        "gaming",
+        "steam",
+        "playstation",
     ],
-
-    "Utilities": [
-        "electricity",
-        "electric bill",
-        "water bill",
-        "gas bill",
-        "internet",
-        "broadband",
-        "wifi",
-        "jio fiber",
-        "airtel xstream",
-        "maintenance",
-    ],
-
-    "Bills": [
-        "mobile recharge",
-        "recharge",
-        "phone bill",
-        "mobile bill",
-        "airtel",
-        "jio",
-        "vi recharge",
-        "vodafone",
-    ],
-
-    "Healthcare": [
-        "medical",
-        "medicine",
-        "pharmacy",
-        "apollo",
-        "hospital",
-        "doctor",
-        "clinic",
-        "healthcare",
-        "diagnostic",
-    ],
-
     "Education": [
         "college",
         "school",
@@ -110,27 +124,19 @@ CATEGORY_KEYWORDS = {
         "udemy",
         "coursera",
         "education",
-        "fees",
+        "exam fee",
+        "school fees",
+        "college fees",
     ],
-
-    "Income": [
-        "salary",
-        "freelance payment",
-        "freelance",
-        "income",
-        "bonus",
-        "payroll",
-        "stipend",
-        "salary credit",
-    ],
-
     "Cash": [
         "atm cash withdrawal",
-        "cash withdrawal",
         "atm withdrawal",
-        "cash",
+        "cash withdrawal",
+        "atm wdl",
+        "atw",
+        "nwd",
+        "self withdrawal",
     ],
-
     "Investment": [
         "investment",
         "mutual fund",
@@ -138,9 +144,44 @@ CATEGORY_KEYWORDS = {
         "stocks",
         "shares",
         "zerodha",
+        "zerodha coin",
         "groww",
         "upstox",
+        "angel one",
+        "kuvera",
+        "ppf",
+        "nps",
         "portfolio",
+    ],
+    "Bills": [
+        "mobile recharge",
+        "prepaid recharge",
+        "postpaid",
+        "recharge",
+        "phone bill",
+        "mobile bill",
+        "airtel",
+        "jio",
+        "vi recharge",
+        "vodafone",
+        "bsnl",
+        "dth",
+        "tata play",
+    ],
+    "Shopping": [
+        "amazon",
+        "flipkart",
+        "myntra",
+        "meesho",
+        "shopping",
+        "mall",
+        "ajio",
+        "nykaa",
+        "tata cliq",
+        "dmart",
+        "reliance retail",
+        "department store",
+        "general store",
     ],
 }
 
@@ -151,26 +192,37 @@ CATEGORY_KEYWORDS = {
 
 def normalize_text(value: str | None) -> str:
     """
-    Normalize merchant/note text before keyword matching.
+    Normalize bank particulars/merchant/note text before keyword matching.
 
     Example:
-        "Amazon.in - Order #123"
+        "UPI/412398765/SWIGGY-Order#123"
         becomes:
-        "amazon in order 123"
+        "upi 412398765 swiggy order 123"
     """
-
     if not value:
         return ""
 
     value = str(value).lower().strip()
 
-    # Replace punctuation/special characters with spaces
+    # Replace punctuation/slashes/underscores with spaces
     value = re.sub(r"[^a-z0-9\s]", " ", value)
 
-    # Remove extra spaces
+    # Collapse multiple spaces
     value = re.sub(r"\s+", " ", value)
 
-    return value
+    return value.strip()
+
+
+# Precompile word-boundary patterns sorted by longest keyword first
+# so multi-word phrases ("jio fiber", "atm withdrawal") match before single words ("jio")
+_COMPILED_PATTERNS: dict[str, list[re.Pattern]] = {
+    category: [
+        re.compile(rf"\b{re.escape(normalize_text(kw))}\b")
+        for kw in sorted(keywords, key=len, reverse=True)
+        if normalize_text(kw)
+    ]
+    for category, keywords in CATEGORY_KEYWORDS.items()
+}
 
 
 # ============================================================
@@ -181,56 +233,42 @@ def auto_categorize(
     merchant: str | None = None,
     note: str | None = None,
     transaction_type: str | None = None,
+    particulars: str | None = None,
 ) -> str | None:
     """
-    Automatically categorizes a transaction using
-    merchant and note information.
+    Automatically categorizes a transaction using particulars, merchant,
+    and note information with whole-word matching.
 
-    Returns:
-        Category name if a keyword matches.
-        None if no reliable category is found.
+    Supports transaction_type values: "income", "credit", "expense", "debit", or None.
     """
-
-    # Combine merchant + note
     text = normalize_text(
-        f"{merchant or ''} {note or ''}"
+        f"{particulars or ''} {merchant or ''} {note or ''}"
     )
 
-    # Nothing to analyze
     if not text:
         return None
 
-    # --------------------------------------------------------
-    # INCOME
-    # --------------------------------------------------------
-    # If the transaction is income, check income keywords
-    # first so "salary" is not treated as something else.
+    tx_type = (transaction_type or "").lower().strip()
+    is_credit = tx_type in ("income", "credit")
+    is_debit = tx_type in ("expense", "debit")
 
-    if transaction_type == "income":
-        for keyword in CATEGORY_KEYWORDS["Income"]:
-            normalized_keyword = normalize_text(keyword)
-
-            if normalized_keyword in text:
+    # --------------------------------------------------------
+    # 1. CHECK INCOME FOR CREDITS / UNKNOWN TYPE
+    # --------------------------------------------------------
+    if is_credit or not is_debit:
+        for pattern in _COMPILED_PATTERNS["Income"]:
+            if pattern.search(text):
                 return "Income"
 
     # --------------------------------------------------------
-    # OTHER CATEGORIES
+    # 2. CHECK ALL EXPENSE / GENERAL CATEGORIES
     # --------------------------------------------------------
-
-    for category, keywords in CATEGORY_KEYWORDS.items():
-
-        # Income has already been checked above
+    for category, patterns in _COMPILED_PATTERNS.items():
         if category == "Income":
             continue
 
-        for keyword in keywords:
-            normalized_keyword = normalize_text(keyword)
-
-            if normalized_keyword in text:
+        for pattern in patterns:
+            if pattern.search(text):
                 return category
-
-    # --------------------------------------------------------
-    # UNKNOWN TRANSACTION
-    # --------------------------------------------------------
 
     return None

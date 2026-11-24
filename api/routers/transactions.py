@@ -9,15 +9,12 @@ from fastapi import (
     UploadFile,
     status,
 )
-
 from sqlalchemy.orm import Session
 
 from core.database import get_db
 from core.security import get_current_user
-
 from models.transaction import Transaction
 from models.user import User
-
 from schemas.transaction import (
     CSVImportRequest,
     CSVImportResult,
@@ -28,15 +25,15 @@ from schemas.transaction import (
     TransactionOut,
     TransactionUpdate,
 )
-
 from services.auto_categorizer import auto_categorize
-from services.statement_parser import parse_csv
-
+from services.statement_parser import parse_csv, parse_image
 
 router = APIRouter(
     prefix="/transactions",
     tags=["transactions"],
 )
+
+ALLOWED_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 # =========================================================
@@ -96,28 +93,18 @@ def list_transactions(
     )
 
     if start_date:
-        query = query.filter(
-            Transaction.date >= start_date
-        )
+        query = query.filter(Transaction.date >= start_date)
 
     if end_date:
-        query = query.filter(
-            Transaction.date <= end_date
-        )
+        query = query.filter(Transaction.date <= end_date)
 
     if category:
-        query = query.filter(
-            Transaction.category == category
-        )
+        query = query.filter(Transaction.category == category)
 
     if type:
-        query = query.filter(
-            Transaction.type == type
-        )
+        query = query.filter(Transaction.type == type)
 
-    return query.order_by(
-        Transaction.date.desc()
-    ).all()
+    return query.order_by(Transaction.date.desc()).all()
 
 
 # =========================================================
@@ -140,15 +127,13 @@ def list_pending_transactions(
             Transaction.user_id == current_user.id,
             Transaction.status == "pending_category",
         )
-        .order_by(
-            Transaction.date.desc()
-        )
+        .order_by(Transaction.date.desc())
         .all()
     )
 
 
 # =========================================================
-# PREVIEW CSV
+# PREVIEW STATEMENT (CSV OR PASSBOOK IMAGE)
 # =========================================================
 
 @router.post(
@@ -161,47 +146,36 @@ async def preview_csv(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Preview a bank statement CSV.
-
-    Nothing is saved to the database.
-
-    The endpoint:
-    - parses the CSV
-    - detects duplicates
-    - automatically predicts categories
-    - returns the preview
+    Preview a bank statement (.csv) or passbook image (.jpg, .png, .webp).
+    Nothing is saved to the database until /import-csv is called.
     """
 
-    # -----------------------------------------------------
-    # Validate file
-    # -----------------------------------------------------
+    filename = (file.filename or "").lower()
+    is_csv = filename.endswith(".csv")
+    is_image = filename.endswith(ALLOWED_IMAGE_EXTENSIONS)
 
-    if (
-        not file.filename
-        or not file.filename.lower().endswith(".csv")
-    ):
+    if not is_csv and not is_image:
         raise HTTPException(
             status_code=400,
-            detail="File must be a .csv",
+            detail="Unsupported file. Upload a .csv statement or passbook image (.jpg, .png, .webp).",
         )
-
-    # -----------------------------------------------------
-    # Read file
-    # -----------------------------------------------------
 
     raw_bytes = await file.read()
 
     if not raw_bytes:
         raise HTTPException(
             status_code=400,
-            detail="Uploaded CSV file is empty",
+            detail="Uploaded file is empty.",
         )
 
     # -----------------------------------------------------
-    # Parse CSV
+    # Parse CSV or Passbook Image
     # -----------------------------------------------------
 
-    parsed_rows, errors = parse_csv(raw_bytes)
+    if is_csv:
+        parsed_rows, errors = parse_csv(raw_bytes)
+    else:
+        parsed_rows, errors = await parse_image(raw_bytes, mime_type=file.content_type)
 
     preview_transactions = []
     duplicates = []
@@ -210,15 +184,14 @@ async def preview_csv(
     # Process each parsed row
     # -----------------------------------------------------
 
-    for index, row in enumerate(
-        parsed_rows,
-        start=2,
-    ):
+    for index, row in enumerate(parsed_rows, start=2):
+        particulars = getattr(row, "particulars", None) or row.merchant or row.note
+        cheque_no = getattr(row, "cheque_no", None)
+        debit = getattr(row, "debit", None) or (row.amount if row.type == "expense" else 0.0)
+        credit = getattr(row, "credit", None) or (row.amount if row.type == "income" else 0.0)
+        balance = getattr(row, "balance", None)
 
-        # -------------------------------------------------
         # Duplicate check
-        # -------------------------------------------------
-
         query = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
             Transaction.date == row.date,
@@ -227,64 +200,45 @@ async def preview_csv(
         )
 
         if row.merchant:
-            query = query.filter(
-                Transaction.merchant == row.merchant
-            )
-
-        elif row.note:
-            query = query.filter(
-                Transaction.note == row.note
-            )
+            query = query.filter(Transaction.merchant == row.merchant)
+        elif particulars:
+            query = query.filter(Transaction.note == particulars)
 
         existing = query.first()
-
-        # -------------------------------------------------
-        # Duplicate found
-        # -------------------------------------------------
 
         if existing:
             duplicates.append(
                 {
                     "row_number": index,
-                    "reason": (
-                        "A transaction with the same "
-                        "date, amount, type and "
-                        "description already exists."
-                    ),
+                    "reason": "A transaction with the same date, amount, type and description already exists.",
                     "existing_transaction_id": existing.id,
                 }
             )
-
             continue
 
-        # -------------------------------------------------
-        # AUTOMATIC CATEGORY
-        # -------------------------------------------------
-
+        # Automatic category using particulars + merchant + note
         category = auto_categorize(
             merchant=row.merchant,
             note=row.note,
             transaction_type=row.type,
+            particulars=particulars,
         )
-
-        # -------------------------------------------------
-        # ADD TO PREVIEW
-        # -------------------------------------------------
 
         preview_transactions.append(
             CSVPreviewTransaction(
                 amount=row.amount,
                 type=row.type,
                 date=row.date,
-                note=row.note,
-                merchant=row.merchant,
+                note=row.note or particulars,
+                merchant=row.merchant or particulars,
+                particulars=particulars,
+                cheque_no=cheque_no,
+                debit=debit,
+                credit=credit,
+                balance=balance,
                 category=category,
             )
         )
-
-    # -----------------------------------------------------
-    # RETURN PREVIEW
-    # -----------------------------------------------------
 
     return CSVPreviewResult(
         parsed_count=len(parsed_rows),
@@ -298,7 +252,7 @@ async def preview_csv(
 
 
 # =========================================================
-# IMPORT REVIEWED CSV TRANSACTIONS
+# IMPORT REVIEWED TRANSACTIONS (CSV OR IMAGE)
 # =========================================================
 
 @router.post(
@@ -312,18 +266,11 @@ def import_csv(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Import transactions selected by the user.
-
-    The backend performs automatic categorization again
-    before saving the transaction.
+    Import transactions selected by the user from CSV or passbook image preview.
     """
 
     created: list[Transaction] = []
     errors: list[dict] = []
-
-    # -----------------------------------------------------
-    # Validate
-    # -----------------------------------------------------
 
     if not payload.transactions:
         raise HTTPException(
@@ -331,19 +278,16 @@ def import_csv(
             detail="No transactions selected for import",
         )
 
-    # -----------------------------------------------------
-    # Process transactions
-    # -----------------------------------------------------
+    for index, row in enumerate(payload.transactions, start=1):
+        particulars = getattr(row, "particulars", None) or row.merchant or row.note
+        cheque_no = getattr(row, "cheque_no", None)
 
-    for index, row in enumerate(
-        payload.transactions,
-        start=1,
-    ):
+        # Include cheque_no in note if present and not already included
+        final_note = row.note or particulars
+        if cheque_no and cheque_no != "-" and final_note and cheque_no not in final_note:
+            final_note = f"{final_note} (Chq/Ref: {cheque_no})"
 
-        # -------------------------------------------------
         # Duplicate check
-        # -------------------------------------------------
-
         query = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
             Transaction.date == row.date,
@@ -352,20 +296,11 @@ def import_csv(
         )
 
         if row.merchant:
-            query = query.filter(
-                Transaction.merchant == row.merchant
-            )
-
-        elif row.note:
-            query = query.filter(
-                Transaction.note == row.note
-            )
+            query = query.filter(Transaction.merchant == row.merchant)
+        elif final_note:
+            query = query.filter(Transaction.note == final_note)
 
         existing = query.first()
-
-        # -------------------------------------------------
-        # Duplicate found
-        # -------------------------------------------------
 
         if existing:
             errors.append(
@@ -373,65 +308,41 @@ def import_csv(
                     "row_number": index,
                     "reason": (
                         "Duplicate transaction skipped. "
-                        f"Existing transaction ID: "
-                        f"{existing.id}"
+                        f"Existing transaction ID: {existing.id}"
                     ),
                 }
             )
-
             continue
 
-        # -------------------------------------------------
-        # AUTOMATIC CATEGORY
-        # -------------------------------------------------
-
+        # Re-run categorization (user may have edited particulars in preview table)
         category = auto_categorize(
             merchant=row.merchant,
-            note=row.note,
+            note=final_note,
             transaction_type=row.type,
+            particulars=particulars,
         )
 
-        status_value = (
-            "categorized"
-            if category
-            else "pending_category"
-        )
-
-        # -------------------------------------------------
-        # CREATE TRANSACTION
-        # -------------------------------------------------
+        status_value = "categorized" if category else "pending_category"
 
         txn = Transaction(
             user_id=current_user.id,
             amount=row.amount,
             type=row.type,
             date=row.date,
-            note=row.note,
-            merchant=row.merchant,
+            note=final_note,
+            merchant=row.merchant or particulars,
             category=category,
             status=status_value,
-            source="csv",
+            source=getattr(row, "source", None) or "csv",
         )
 
         db.add(txn)
         created.append(txn)
 
-    # -----------------------------------------------------
-    # COMMIT
-    # -----------------------------------------------------
-
     db.commit()
-
-    # -----------------------------------------------------
-    # REFRESH
-    # -----------------------------------------------------
 
     for txn in created:
         db.refresh(txn)
-
-    # -----------------------------------------------------
-    # RETURN
-    # -----------------------------------------------------
 
     return CSVImportResult(
         imported_count=len(created),
@@ -457,26 +368,14 @@ async def upload_csv(
 ):
     """
     Direct CSV import.
-
     Kept for compatibility with the existing API.
     """
 
-    # -----------------------------------------------------
-    # Validate file
-    # -----------------------------------------------------
-
-    if (
-        not file.filename
-        or not file.filename.lower().endswith(".csv")
-    ):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
             status_code=400,
             detail="File must be a .csv",
         )
-
-    # -----------------------------------------------------
-    # Read file
-    # -----------------------------------------------------
 
     raw_bytes = await file.read()
 
@@ -486,40 +385,28 @@ async def upload_csv(
             detail="Uploaded CSV file is empty",
         )
 
-    # -----------------------------------------------------
-    # Parse
-    # -----------------------------------------------------
-
     parsed_rows, errors = parse_csv(raw_bytes)
-
     created: list[Transaction] = []
 
-    # -----------------------------------------------------
-    # Create transactions
-    # -----------------------------------------------------
-
     for row in parsed_rows:
+        particulars = getattr(row, "particulars", None) or row.merchant or row.note
 
-        # Automatic categorization
         category = auto_categorize(
             merchant=row.merchant,
             note=row.note,
             transaction_type=row.type,
+            particulars=particulars,
         )
 
-        status_value = (
-            "categorized"
-            if category
-            else "pending_category"
-        )
+        status_value = "categorized" if category else "pending_category"
 
         txn = Transaction(
             user_id=current_user.id,
             amount=row.amount,
             type=row.type,
             date=row.date,
-            note=row.note,
-            merchant=row.merchant,
+            note=row.note or particulars,
+            merchant=row.merchant or particulars,
             category=category,
             status=status_value,
             source="csv",
@@ -528,22 +415,10 @@ async def upload_csv(
         db.add(txn)
         created.append(txn)
 
-    # -----------------------------------------------------
-    # Commit
-    # -----------------------------------------------------
-
     db.commit()
-
-    # -----------------------------------------------------
-    # Refresh
-    # -----------------------------------------------------
 
     for txn in created:
         db.refresh(txn)
-
-    # -----------------------------------------------------
-    # Return
-    # -----------------------------------------------------
 
     return CSVImportResult(
         imported_count=len(created),
@@ -569,11 +444,7 @@ def categorize_transaction(
 ):
     """Manually assign a category to a transaction."""
 
-    txn = _get_owned_transaction(
-        db,
-        transaction_id,
-        current_user.id,
-    )
+    txn = _get_owned_transaction(db, transaction_id, current_user.id)
 
     txn.category = payload.category
     txn.status = "categorized"
@@ -600,22 +471,12 @@ def update_transaction(
 ):
     """Update an existing transaction."""
 
-    txn = _get_owned_transaction(
-        db,
-        transaction_id,
-        current_user.id,
-    )
+    txn = _get_owned_transaction(db, transaction_id, current_user.id)
 
-    update_data = payload.model_dump(
-        exclude_unset=True
-    )
+    update_data = payload.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
-        setattr(
-            txn,
-            field,
-            value,
-        )
+        setattr(txn, field, value)
 
     if update_data.get("category"):
         txn.status = "categorized"
@@ -641,11 +502,7 @@ def delete_transaction(
 ):
     """Delete a transaction belonging to the current user."""
 
-    txn = _get_owned_transaction(
-        db,
-        transaction_id,
-        current_user.id,
-    )
+    txn = _get_owned_transaction(db, transaction_id, current_user.id)
 
     db.delete(txn)
     db.commit()

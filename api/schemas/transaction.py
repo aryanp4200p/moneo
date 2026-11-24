@@ -1,4 +1,3 @@
-
 from datetime import date, datetime
 from typing import Optional, Literal
 from zoneinfo import ZoneInfo
@@ -155,7 +154,7 @@ class CSVImportResult(BaseModel):
 
 
 # =========================================================
-# CSV PREVIEW TRANSACTION
+# CSV / PASSBOOK PREVIEW TRANSACTION
 # =========================================================
 
 class CSVPreviewTransaction(BaseModel):
@@ -165,6 +164,25 @@ class CSVPreviewTransaction(BaseModel):
     date: date
     note: Optional[str] = None
     category: Optional[str] = None
+
+    # Optional passbook columns (for CSV & passbook image previews)
+    particulars: Optional[str] = None
+    cheque_no: Optional[str] = None
+    debit: Optional[float] = None
+    credit: Optional[float] = None
+    balance: Optional[float] = None
+    source: Optional[TransactionSource] = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalize_type(cls, value: str) -> str:
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered == "credit":
+                return "income"
+            if lowered == "debit":
+                return "expense"
+        return value
 
     @field_validator("date")
     @classmethod
