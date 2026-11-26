@@ -209,11 +209,11 @@ def generate_monthly_pdf_report(
 
     title_style = ParagraphStyle(
         "Title",
-        fontName=FONT_NAME,
-        fontSize=21,
-        leading=25,
+        fontName="Times-Bold",
+        fontSize=24,
+        leading=28,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#0D9488"),
+        textColor=colors.HexColor("#6D5CE7"),
         spaceAfter=4,
     )
 
@@ -326,7 +326,7 @@ def generate_monthly_pdf_report(
 
     elements.append(
         Paragraph(
-            "<b>MONEO</b>",
+            "Moneo",
             title_style,
         )
     )

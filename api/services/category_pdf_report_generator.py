@@ -28,7 +28,7 @@ from models.user import User
 NAVY = colors.HexColor("#14213D")
 BLUE = colors.HexColor("#24428C")
 TEAL = colors.HexColor("#0F9F91")
-BRAND_TEAL = colors.HexColor("#0D9488")
+BRAND_PURPLE = colors.HexColor("#6D5CE7")
 PALE_BLUE = colors.HexColor("#D6E2F7")
 PALE_TEAL = colors.HexColor("#E6F7F4")
 LIGHT = colors.HexColor("#F1F5F9")
@@ -138,11 +138,11 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     title_style = ParagraphStyle(
         "FinanceTitle",
         parent=styles["Title"],
-        fontName=bold_font,
-        fontSize=21,
-        leading=25,
+        fontName="Times-Bold",
+        fontSize=24,
+        leading=28,
         alignment=TA_CENTER,
-        textColor=BRAND_TEAL,
+        textColor=BRAND_PURPLE,
         spaceAfter=3,
     )
     subtitle_style = ParagraphStyle(
@@ -220,7 +220,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
 
     elements = [
         Spacer(1, 2 * mm),
-        Paragraph("MONEO", title_style),
+        Paragraph("Moneo", title_style),
         Paragraph(f"CATEGORY-WISE SPENDING&nbsp;&nbsp;·&nbsp;&nbsp;{escape(month_name)}", subtitle_style),
     ]
 
