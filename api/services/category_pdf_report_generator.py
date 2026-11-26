@@ -29,9 +29,9 @@ NAVY = colors.HexColor("#14213D")
 BLUE = colors.HexColor("#24428C")
 TEAL = colors.HexColor("#0F9F91")
 PALE_BLUE = colors.HexColor("#D6E2F7")
-PALE_TEAL = colors.HexColor("#D3F0EB")
+PALE_TEAL = colors.HexColor("#E2F5F1")
 LIGHT = colors.HexColor("#EEF2F8")
-BORDER = colors.HexColor("#B8C5D8")
+BORDER = colors.HexColor("#8FA3BF")
 INK = colors.HexColor("#253047")
 MUTED = colors.HexColor("#4B5870")
 WHITE = colors.white
@@ -129,8 +129,8 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
         leftMargin=15 * mm,
         topMargin=13 * mm,
         bottomMargin=17 * mm,
-        title=f"Category-wise Spending - {month_name}",
-        author="Finance Manager",
+        title=f"Moneo - Category-wise Spending ({month_name})",
+        author="Moneo",
     )
 
     styles = getSampleStyleSheet()
@@ -219,7 +219,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
 
     elements = [
         Spacer(1, 2 * mm),
-        Paragraph("FINANCE MANAGER", title_style),
+        Paragraph("MONEO", title_style),
         Paragraph(f"CATEGORY-WISE SPENDING&nbsp;&nbsp;·&nbsp;&nbsp;{escape(month_name)}", subtitle_style),
     ]
 
@@ -234,7 +234,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     )
     user_line.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.8, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 9),
         ("RIGHTPADDING", (0, 0), (-1, -1), 9),
@@ -258,8 +258,8 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     summary = Table(summary_rows, colWidths=[60 * mm, 60 * mm, 60 * mm], rowHeights=[8 * mm, 12 * mm])
     summary.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), PALE_TEAL),
-        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#B9E5DF")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CFEAE6")),
+        ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#5BB5A6")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.8, colors.HexColor("#7EC9BD")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -302,7 +302,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     category_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-        ("GRID", (0, 0), (-1, -1), 0.45, BORDER),
+        ("GRID", (0, 0), (-1, -1), 0.7, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -339,8 +339,8 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
         detail_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), PALE_BLUE),
             ("TEXTCOLOR", (0, 0), (-1, 0), BLUE),
-            ("GRID", (0, 0), (-1, -1), 0.55, BORDER),
-            ("LINEBELOW", (0, 0), (-1, 0), 1.0, colors.HexColor("#9AAAC2")),
+            ("GRID", (0, 0), (-1, -1), 0.75, BORDER),
+            ("LINEBELOW", (0, 0), (-1, 0), 1.1, colors.HexColor("#64748B")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
@@ -353,11 +353,11 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     def footer(canvas, document):
         canvas.saveState()
         canvas.setStrokeColor(BORDER)
-        canvas.setLineWidth(0.6)
+        canvas.setLineWidth(0.8)
         canvas.line(15 * mm, 11 * mm, A4[0] - 15 * mm, 11 * mm)
         canvas.setFont(regular_font, 7.5)
         canvas.setFillColor(MUTED)
-        canvas.drawString(15 * mm, 6.5 * mm, "Finance Manager  |  Category-wise report")
+        canvas.drawString(15 * mm, 6.5 * mm, "Moneo  |  Category-wise Report")
         canvas.drawRightString(A4[0] - 15 * mm, 6.5 * mm, f"Page {document.page}")
         canvas.restoreState()
 

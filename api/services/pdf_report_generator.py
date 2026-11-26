@@ -70,7 +70,7 @@ def _register_unicode_font():
             pdfmetrics.registerFont(font)
 
             print(
-                f"Finance Manager PDF font selected: {font_path}"
+                f"Moneo PDF font selected: {font_path}"
             )
 
             return "FinanceUnicode"
@@ -197,8 +197,8 @@ def generate_monthly_pdf_report(
         leftMargin=16 * mm,
         topMargin=14 * mm,
         bottomMargin=18 * mm,
-        title=f"Monthly Statement - {year}-{month:02d}",
-        author="Finance Manager",
+        title=f"Moneo - Monthly Statement ({year}-{month:02d})",
+        author="Moneo",
     )
 
     elements = []
@@ -326,7 +326,7 @@ def generate_monthly_pdf_report(
 
     elements.append(
         Paragraph(
-            "FINANCE MANAGER",
+            "MONEO",
             title_style,
         )
     )
@@ -368,7 +368,7 @@ def generate_monthly_pdf_report(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#D5DAE2")),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.8, colors.HexColor("#94A3B8")),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
             ]
@@ -427,21 +427,21 @@ def generate_monthly_pdf_report(
                     "BACKGROUND",
                     (0, 0),
                     (-1, -1),
-                    colors.HexColor("#F8FAFC"),
+                    colors.HexColor("#F1F5F9"),
                 ),
                 (
                     "BOX",
                     (0, 0),
                     (-1, -1),
-                    0.7,
-                    colors.HexColor("#D5DAE2"),
+                    1.0,
+                    colors.HexColor("#64748B"),
                 ),
                 (
                     "INNERGRID",
                     (0, 0),
                     (-1, -1),
-                    0.5,
-                    colors.HexColor("#D5DAE2"),
+                    0.8,
+                    colors.HexColor("#94A3B8"),
                 ),
                 (
                     "LEFTPADDING",
@@ -596,11 +596,18 @@ def generate_monthly_pdf_report(
                     colors.white,
                 ),
                 (
-                    "GRID",
+                    "BOX",
                     (0, 0),
                     (-1, -1),
-                    0.4,
-                    colors.HexColor("#D5DAE2"),
+                    0.9,
+                    colors.HexColor("#64748B"),
+                ),
+                (
+                    "INNERGRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.6,
+                    colors.HexColor("#94A3B8"),
                 ),
                 (
                     "VALIGN",
@@ -682,8 +689,8 @@ def generate_monthly_pdf_report(
                     "LINEABOVE",
                     (0, 0),
                     (-1, -1),
-                    0.7,
-                    colors.HexColor("#9CA3AF"),
+                    0.9,
+                    colors.HexColor("#64748B"),
                 ),
                 (
                     "TOPPADDING",
@@ -710,7 +717,7 @@ def generate_monthly_pdf_report(
 
     generated_text = (
         f"Generated on {datetime.now().strftime('%d %B %Y')} "
-        f"· Finance Manager"
+        f"· Moneo"
     )
 
     elements.append(
@@ -735,7 +742,7 @@ def generate_monthly_pdf_report(
         canvas.saveState()
 
         canvas.setStrokeColor(
-            colors.HexColor("#E5E7EB")
+            colors.HexColor("#CBD5E1")
         )
 
         canvas.line(
@@ -751,13 +758,13 @@ def generate_monthly_pdf_report(
         )
 
         canvas.setFillColor(
-            colors.HexColor("#A1AAB8")
+            colors.HexColor("#64748B")
         )
 
         canvas.drawString(
             16 * mm,
             6 * mm,
-            "Finance Manager",
+            "Moneo  |  Monthly Statement",
         )
 
         canvas.drawRightString(
@@ -778,5 +785,3 @@ def generate_monthly_pdf_report(
     )
     pdf_buffer.seek(0)
     return pdf_buffer
-
-
