@@ -210,10 +210,10 @@ def generate_monthly_pdf_report(
     title_style = ParagraphStyle(
         "Title",
         fontName=FONT_NAME,
-        fontSize=20,
-        leading=24,
+        fontSize=21,
+        leading=25,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#24428C"),
+        textColor=colors.HexColor("#0D9488"),
         spaceAfter=4,
     )
 
@@ -223,7 +223,7 @@ def generate_monthly_pdf_report(
         fontSize=11,
         leading=14,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#7A8799"),
+        textColor=colors.HexColor("#64748B"),
         spaceAfter=14,
     )
 
@@ -326,7 +326,7 @@ def generate_monthly_pdf_report(
 
     elements.append(
         Paragraph(
-            "MONEO",
+            "<b>MONEO</b>",
             title_style,
         )
     )
@@ -368,7 +368,7 @@ def generate_monthly_pdf_report(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.8, colors.HexColor("#94A3B8")),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.65, colors.HexColor("#CBD5E1")),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
             ]
@@ -427,21 +427,21 @@ def generate_monthly_pdf_report(
                     "BACKGROUND",
                     (0, 0),
                     (-1, -1),
-                    colors.HexColor("#F1F5F9"),
+                    colors.HexColor("#F8FAFC"),
                 ),
                 (
                     "BOX",
                     (0, 0),
                     (-1, -1),
-                    1.0,
-                    colors.HexColor("#64748B"),
+                    0.75,
+                    colors.HexColor("#A9B8CD"),
                 ),
                 (
                     "INNERGRID",
                     (0, 0),
                     (-1, -1),
-                    0.8,
-                    colors.HexColor("#94A3B8"),
+                    0.6,
+                    colors.HexColor("#CBD5E1"),
                 ),
                 (
                     "LEFTPADDING",
@@ -599,15 +599,15 @@ def generate_monthly_pdf_report(
                     "BOX",
                     (0, 0),
                     (-1, -1),
-                    0.9,
-                    colors.HexColor("#64748B"),
+                    0.7,
+                    colors.HexColor("#A9B8CD"),
                 ),
                 (
                     "INNERGRID",
                     (0, 0),
                     (-1, -1),
-                    0.6,
-                    colors.HexColor("#94A3B8"),
+                    0.5,
+                    colors.HexColor("#CBD5E1"),
                 ),
                 (
                     "VALIGN",
@@ -689,8 +689,8 @@ def generate_monthly_pdf_report(
                     "LINEABOVE",
                     (0, 0),
                     (-1, -1),
-                    0.9,
-                    colors.HexColor("#64748B"),
+                    0.7,
+                    colors.HexColor("#A9B8CD"),
                 ),
                 (
                     "TOPPADDING",

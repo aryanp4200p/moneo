@@ -28,10 +28,11 @@ from models.user import User
 NAVY = colors.HexColor("#14213D")
 BLUE = colors.HexColor("#24428C")
 TEAL = colors.HexColor("#0F9F91")
+BRAND_TEAL = colors.HexColor("#0D9488")
 PALE_BLUE = colors.HexColor("#D6E2F7")
-PALE_TEAL = colors.HexColor("#E2F5F1")
-LIGHT = colors.HexColor("#EEF2F8")
-BORDER = colors.HexColor("#8FA3BF")
+PALE_TEAL = colors.HexColor("#E6F7F4")
+LIGHT = colors.HexColor("#F1F5F9")
+BORDER = colors.HexColor("#A9B8CD")
 INK = colors.HexColor("#253047")
 MUTED = colors.HexColor("#4B5870")
 WHITE = colors.white
@@ -138,10 +139,10 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
         "FinanceTitle",
         parent=styles["Title"],
         fontName=bold_font,
-        fontSize=20,
-        leading=24,
+        fontSize=21,
+        leading=25,
         alignment=TA_CENTER,
-        textColor=NAVY,
+        textColor=BRAND_TEAL,
         spaceAfter=3,
     )
     subtitle_style = ParagraphStyle(
@@ -234,7 +235,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     )
     user_line.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-        ("BOX", (0, 0), (-1, -1), 0.8, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 9),
         ("RIGHTPADDING", (0, 0), (-1, -1), 9),
@@ -258,8 +259,8 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     summary = Table(summary_rows, colWidths=[60 * mm, 60 * mm, 60 * mm], rowHeights=[8 * mm, 12 * mm])
     summary.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), PALE_TEAL),
-        ("BOX", (0, 0), (-1, -1), 1.0, colors.HexColor("#5BB5A6")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.8, colors.HexColor("#7EC9BD")),
+        ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#88CFC4")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#A5DDD4")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -302,7 +303,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     category_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-        ("GRID", (0, 0), (-1, -1), 0.7, BORDER),
+        ("GRID", (0, 0), (-1, -1), 0.55, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -339,8 +340,8 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
         detail_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), PALE_BLUE),
             ("TEXTCOLOR", (0, 0), (-1, 0), BLUE),
-            ("GRID", (0, 0), (-1, -1), 0.75, BORDER),
-            ("LINEBELOW", (0, 0), (-1, 0), 1.1, colors.HexColor("#64748B")),
+            ("GRID", (0, 0), (-1, -1), 0.55, BORDER),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.85, colors.HexColor("#8FA3BF")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
@@ -353,7 +354,7 @@ def generate_category_pdf_report(db: Session, user: User, year: int, month: int)
     def footer(canvas, document):
         canvas.saveState()
         canvas.setStrokeColor(BORDER)
-        canvas.setLineWidth(0.8)
+        canvas.setLineWidth(0.6)
         canvas.line(15 * mm, 11 * mm, A4[0] - 15 * mm, 11 * mm)
         canvas.setFont(regular_font, 7.5)
         canvas.setFillColor(MUTED)
