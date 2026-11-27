@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Lock,
@@ -7,13 +7,13 @@ import {
   KeyRound,
   AlertCircle,
   CheckCircle,
-  Wallet,
   ArrowRight,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 
 export default function ResetPasswordPage() {
   const resetPassword = useAuthStore((s) => s.resetPassword);
+  const clearError = useAuthStore((s) => s.clearError);
   const loading = useAuthStore((s) => s.loading);
 
   const [searchParams] = useSearchParams();
@@ -27,6 +27,32 @@ export default function ResetPasswordPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState(4);
+
+  useEffect(() => {
+    return () => {
+      if (typeof clearError === "function") {
+        clearError();
+      }
+    };
+  }, [clearError]);
+
+  useEffect(() => {
+    if (!success) return;
+
+    const timer = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          navigate("/login", { replace: true });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [success, navigate]);
 
   const passwordRequirements = [
     {
@@ -52,6 +78,11 @@ export default function ResetPasswordPage() {
   ];
 
   const passwordIsValid = passwordRequirements.every((item) => item.valid);
+  const passwordsMatch =
+    password.length > 0 &&
+    confirmPassword.length > 0 &&
+    password === confirmPassword;
+  const canSubmit = !loading && passwordIsValid && passwordsMatch;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -107,7 +138,7 @@ export default function ResetPasswordPage() {
   const inputStyle = {
     width: "100%",
     boxSizing: "border-box",
-    padding: "13px 43px 13px 40px",
+    padding: "12px 43px 12px 40px",
     border: "1px solid #E0E3EF",
     borderRadius: 9,
     backgroundColor: "#FFFFFF",
@@ -119,7 +150,7 @@ export default function ResetPasswordPage() {
 
   const labelStyle = {
     display: "block",
-    marginBottom: 7,
+    marginBottom: 6,
     color: "#34394D",
     fontSize: 13,
     fontWeight: 600,
@@ -135,8 +166,8 @@ export default function ResetPasswordPage() {
     display: "flex",
     alignItems: "flex-start",
     gap: 9,
-    marginBottom: 18,
-    padding: "12px 13px",
+    marginBottom: 16,
+    padding: "11px 13px",
     border: "1px solid #F3CCCC",
     borderRadius: 9,
     backgroundColor: "#FFF4F4",
@@ -154,7 +185,7 @@ export default function ResetPasswordPage() {
       {/* Header — matching LoginPage */}
       <header
         style={{
-          minHeight: 64,
+          minHeight: 62,
           padding: "0 clamp(20px, 6vw, 80px)",
           display: "flex",
           alignItems: "center",
@@ -171,7 +202,7 @@ export default function ResetPasswordPage() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 10,
+            gap: 8,
             textDecoration: "none",
             flexShrink: 0,
           }}
@@ -191,7 +222,7 @@ export default function ResetPasswordPage() {
             src="/brand/moneo-wordmark-light.png"
             alt="Moneo"
             style={{
-              width: 100,
+              width: 96,
               height: "auto",
               objectFit: "contain",
               flexShrink: 0,
@@ -212,12 +243,12 @@ export default function ResetPasswordPage() {
           gridTemplateColumns:
             "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
           alignItems: "center",
-          gap: "clamp(32px, 6vw, 80px)",
+          gap: "clamp(28px, 5vw, 72px)",
           width: "100%",
           maxWidth: 1180,
           boxSizing: "border-box",
           margin: "0 auto",
-          padding: "48px clamp(20px, 5vw, 64px)",
+          padding: "32px clamp(20px, 5vw, 64px)",
         }}
       >
         {/* Intro section */}
@@ -233,8 +264,8 @@ export default function ResetPasswordPage() {
               display: "inline-flex",
               alignItems: "center",
               gap: 9,
-              padding: "9px 13px",
-              marginBottom: 24,
+              padding: "8px 13px",
+              marginBottom: 20,
               backgroundColor: "#FFFFFF",
               border: "1px solid #E5E1F7",
               boxShadow: "0 5px 15px rgba(32,25,70,0.04)",
@@ -257,12 +288,12 @@ export default function ResetPasswordPage() {
 
           <h1
             style={{
-              margin: "0 0 22px",
+              margin: "0 0 18px",
               fontFamily: "Georgia, 'Times New Roman', serif",
-              fontSize: "clamp(44px, 5.4vw, 70px)",
+              fontSize: "clamp(42px, 5vw, 66px)",
               fontWeight: 500,
               lineHeight: 0.99,
-              letterSpacing: "-2.8px",
+              letterSpacing: "-2.6px",
               color: "#171B2B",
             }}
           >
@@ -278,8 +309,8 @@ export default function ResetPasswordPage() {
               maxWidth: 410,
               margin: 0,
               color: "#6B728B",
-              fontSize: 16,
-              lineHeight: 1.9,
+              fontSize: 15,
+              lineHeight: 1.8,
             }}
           >
             Choose a strong new password to protect your account and keep your
@@ -289,8 +320,8 @@ export default function ResetPasswordPage() {
           <div
             style={{
               display: "grid",
-              gap: 16,
-              marginTop: 30,
+              gap: 14,
+              marginTop: 26,
             }}
           >
             {[
@@ -338,7 +369,7 @@ export default function ResetPasswordPage() {
                       display: "block",
                       fontSize: 13,
                       color: "#34394D",
-                      marginBottom: 4,
+                      marginBottom: 3,
                     }}
                   >
                     {item.title}
@@ -348,7 +379,7 @@ export default function ResetPasswordPage() {
                       margin: 0,
                       color: "#737990",
                       fontSize: 12,
-                      lineHeight: 1.7,
+                      lineHeight: 1.6,
                     }}
                   >
                     {item.description}
@@ -369,7 +400,7 @@ export default function ResetPasswordPage() {
         >
           <div
             style={{
-              padding: "clamp(24px, 4vw, 38px)",
+              padding: "clamp(22px, 3.5vw, 32px)",
               backgroundColor: "#FFFFFF",
               border: "1px solid #E5E7F0",
               borderRadius: 16,
@@ -384,7 +415,7 @@ export default function ResetPasswordPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    marginBottom: 18,
+                    marginBottom: 16,
                   }}
                 >
                   <div
@@ -407,15 +438,15 @@ export default function ResetPasswordPage() {
                       style={{
                         margin: 0,
                         color: "#171B2B",
-                        fontSize: 24,
-                        letterSpacing: "-0.7px",
+                        fontSize: 22,
+                        letterSpacing: "-0.6px",
                       }}
                     >
                       Invalid reset link
                     </h2>
                     <p
                       style={{
-                        margin: "4px 0 0",
+                        margin: "3px 0 0",
                         color: "#858BA0",
                         fontSize: 12,
                       }}
@@ -429,7 +460,8 @@ export default function ResetPasswordPage() {
                   style={{
                     color: "#747A90",
                     fontSize: 13,
-                    lineHeight: 1.8,
+                    lineHeight: 1.75,
+                    marginBottom: 20,
                   }}
                 >
                   This link is missing its reset token. Request a new password
@@ -443,8 +475,8 @@ export default function ResetPasswordPage() {
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 9,
-                    minHeight: 48,
-                    padding: "12px 16px",
+                    minHeight: 46,
+                    padding: "11px 16px",
                     boxSizing: "border-box",
                     borderRadius: 9,
                     backgroundColor: "#7957E8",
@@ -461,25 +493,25 @@ export default function ResetPasswordPage() {
               <div style={{ textAlign: "center" }}>
                 <div
                   style={{
-                    width: 64,
-                    height: 64,
-                    margin: "0 auto 20px",
+                    width: 60,
+                    height: 60,
+                    margin: "0 auto 18px",
                     display: "grid",
                     placeItems: "center",
-                    borderRadius: 18,
+                    borderRadius: 16,
                     backgroundColor: "#EEE9FF",
                     color: "#7957E8",
                   }}
                 >
-                  <CheckCircle size={34} />
+                  <CheckCircle size={32} />
                 </div>
 
                 <h2
                   style={{
-                    margin: "0 0 10px",
+                    margin: "0 0 8px",
                     color: "#171B2B",
-                    fontSize: 25,
-                    letterSpacing: "-0.7px",
+                    fontSize: 24,
+                    letterSpacing: "-0.6px",
                   }}
                 >
                   Password updated!
@@ -489,11 +521,12 @@ export default function ResetPasswordPage() {
                   style={{
                     color: "#747A90",
                     fontSize: 13,
-                    lineHeight: 1.8,
+                    lineHeight: 1.75,
+                    margin: 0,
                   }}
                 >
-                  Your password has been changed successfully. You can now sign
-                  in using your new password.
+                  Your password has been changed successfully. Redirecting to
+                  login in {redirectCountdown}s…
                 </p>
 
                 <button
@@ -501,13 +534,13 @@ export default function ResetPasswordPage() {
                   onClick={() => navigate("/login", { replace: true })}
                   style={{
                     width: "100%",
-                    minHeight: 48,
+                    minHeight: 46,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 9,
-                    marginTop: 22,
-                    padding: "12px 16px",
+                    marginTop: 20,
+                    padding: "11px 16px",
                     border: "none",
                     borderRadius: 9,
                     backgroundColor: "#7957E8",
@@ -527,13 +560,13 @@ export default function ResetPasswordPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    marginBottom: 9,
+                    marginBottom: 8,
                   }}
                 >
                   <div
                     style={{
-                      width: 44,
-                      height: 44,
+                      width: 42,
+                      height: 42,
                       flexShrink: 0,
                       display: "grid",
                       placeItems: "center",
@@ -542,7 +575,7 @@ export default function ResetPasswordPage() {
                       color: "#7957E8",
                     }}
                   >
-                    <KeyRound size={22} />
+                    <KeyRound size={20} />
                   </div>
 
                   <div>
@@ -550,15 +583,15 @@ export default function ResetPasswordPage() {
                       style={{
                         margin: 0,
                         color: "#171B2B",
-                        fontSize: 24,
-                        letterSpacing: "-0.7px",
+                        fontSize: 22,
+                        letterSpacing: "-0.6px",
                       }}
                     >
                       Reset password
                     </h2>
                     <p
                       style={{
-                        margin: "4px 0 0",
+                        margin: "3px 0 0",
                         color: "#858BA0",
                         fontSize: 12,
                       }}
@@ -570,10 +603,10 @@ export default function ResetPasswordPage() {
 
                 <p
                   style={{
-                    margin: "14px 0 24px",
+                    margin: "10px 0 18px",
                     color: "#747A90",
                     fontSize: 13,
-                    lineHeight: 1.7,
+                    lineHeight: 1.6,
                   }}
                 >
                   Enter your new password below to regain access to your
@@ -592,7 +625,7 @@ export default function ResetPasswordPage() {
 
                 <form onSubmit={handleSubmit}>
                   {/* New password */}
-                  <div style={{ marginBottom: 18 }}>
+                  <div style={{ marginBottom: 14 }}>
                     <label style={labelStyle} htmlFor="new-password">
                       New password
                     </label>
@@ -617,8 +650,12 @@ export default function ResetPasswordPage() {
                         type={showPassword ? "text" : "password"}
                         placeholder="Create a strong password"
                         autoComplete="new-password"
+                        autoFocus
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (error) setError("");
+                        }}
                         required
                         minLength={8}
                       />
@@ -657,8 +694,8 @@ export default function ResetPasswordPage() {
                   {/* Password requirements */}
                   <div
                     style={{
-                      marginBottom: 20,
-                      padding: 14,
+                      marginBottom: 16,
+                      padding: "12px 14px",
                       border: "1px solid #E5E7F0",
                       borderRadius: 10,
                       backgroundColor: "#F9F9FD",
@@ -666,7 +703,7 @@ export default function ResetPasswordPage() {
                   >
                     <p
                       style={{
-                        margin: "0 0 11px",
+                        margin: "0 0 8px",
                         color: "#34394D",
                         fontSize: 12,
                         fontWeight: 700,
@@ -675,32 +712,39 @@ export default function ResetPasswordPage() {
                       Password requirements
                     </p>
 
-                    {passwordRequirements.map((item) => (
-                      <div
-                        key={item.label}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 7,
-                          color: item.valid ? "#5B42C4" : "#858BA0",
-                          fontSize: 12,
-                        }}
-                      >
-                        <CheckCircle
-                          size={14}
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 5,
+                      }}
+                    >
+                      {passwordRequirements.map((item) => (
+                        <div
+                          key={item.label}
                           style={{
-                            flexShrink: 0,
-                            opacity: item.valid ? 1 : 0.45,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            color: item.valid ? "#5B42C4" : "#858BA0",
+                            fontSize: 12,
+                            fontWeight: item.valid ? 500 : 400,
                           }}
-                        />
-                        {item.label}
-                      </div>
-                    ))}
+                        >
+                          <CheckCircle
+                            size={14}
+                            style={{
+                              flexShrink: 0,
+                              opacity: item.valid ? 1 : 0.45,
+                            }}
+                          />
+                          {item.label}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Confirm password */}
-                  <div style={{ marginBottom: 23 }}>
+                  <div style={{ marginBottom: 18 }}>
                     <label style={labelStyle} htmlFor="confirm-password">
                       Confirm new password
                     </label>
@@ -726,13 +770,18 @@ export default function ResetPasswordPage() {
                           borderColor:
                             confirmPassword && confirmPassword !== password
                               ? "#D92D20"
-                              : "#E0E3EF",
+                              : passwordsMatch
+                                ? "#7957E8"
+                                : "#E0E3EF",
                         }}
                         type={showConfirmPassword ? "text" : "password"}
                         placeholder="Re-enter your new password"
                         autoComplete="new-password"
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          if (error) setError("");
+                        }}
                         required
                         minLength={8}
                         aria-invalid={
@@ -776,7 +825,7 @@ export default function ResetPasswordPage() {
                     {confirmPassword && confirmPassword !== password && (
                       <p
                         style={{
-                          margin: "7px 0 0",
+                          margin: "6px 0 0",
                           color: "#B42318",
                           fontSize: 12,
                         }}
@@ -788,25 +837,24 @@ export default function ResetPasswordPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || !passwordIsValid}
+                    disabled={!canSubmit}
                     style={{
                       width: "100%",
-                      minHeight: 48,
+                      minHeight: 46,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 9,
-                      padding: "12px 16px",
+                      padding: "11px 16px",
                       border: "none",
                       borderRadius: 9,
-                      backgroundColor:
-                        loading || !passwordIsValid ? "#A999E9" : "#7957E8",
+                      backgroundColor: !canSubmit ? "#A999E9" : "#7957E8",
                       color: "#FFFFFF",
                       fontSize: 14,
                       fontWeight: 700,
-                      cursor:
-                        loading || !passwordIsValid ? "not-allowed" : "pointer",
+                      cursor: !canSubmit ? "not-allowed" : "pointer",
                       boxShadow: "0 5px 13px rgba(121,87,232,0.2)",
+                      transition: "background-color 0.2s ease",
                     }}
                   >
                     {loading ? "Updating password…" : "Reset password"}
@@ -821,7 +869,7 @@ export default function ResetPasswordPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
-                margin: "24px 0 19px",
+                margin: "20px 0 16px",
                 color: "#C0C3D0",
                 fontSize: 11,
               }}
@@ -860,10 +908,10 @@ export default function ResetPasswordPage() {
 
           <p
             style={{
-              margin: "18px 0 0",
+              margin: "14px 0 0",
               color: "#8B90A4",
               fontSize: 11,
-              lineHeight: 1.7,
+              lineHeight: 1.6,
               textAlign: "center",
             }}
           >
@@ -874,14 +922,14 @@ export default function ResetPasswordPage() {
 
       <footer
         style={{
-          padding: "17px 20px",
+          padding: "15px 20px",
           borderTop: "1px solid rgba(225,226,239,0.85)",
           color: "#898EA2",
           fontSize: 11,
           textAlign: "center",
         }}
       >
-        Moneo · Personal finance management
+        Moneo · Manage Today. Build Tomorrow.
       </footer>
     </div>
   );
