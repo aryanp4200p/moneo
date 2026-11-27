@@ -2,13 +2,24 @@ import { useState } from "react";
 import { Filter, RotateCcw } from "lucide-react";
 import { useTransactionStore } from "../store/transactionStore";
 
-export default function DashboardFilter() {
-  const { fetchTransactions, setFilters, clearFilters } = useTransactionStore();
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+export default function DashboardFilter() {
+  const { filters, fetchTransactions, setFilters, clearFilters } =
+    useTransactionStore();
+
+  const [startDate, setStartDate] = useState(filters?.start_date || "");
+  const [endDate, setEndDate] = useState(filters?.end_date || "");
   const [activeQuick, setActiveQuick] = useState(null);
   const [dateError, setDateError] = useState("");
+
+  const todayStr = formatLocalDate(new Date());
+  const hasActiveFilter = Boolean(startDate || endDate || activeQuick);
 
   const applyFilter = () => {
     if (startDate && endDate && startDate > endDate) {
@@ -17,16 +28,18 @@ export default function DashboardFilter() {
     }
     setDateError("");
 
-    const filters = {
-      start_date: startDate,
-      end_date: endDate,
+    const nextFilters = {
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
     };
 
-    setFilters(filters);
-    fetchTransactions(filters);
+    setFilters(nextFilters);
+    fetchTransactions(nextFilters);
   };
 
   const resetFilter = () => {
+    if (!hasActiveFilter) return;
+
     setStartDate("");
     setEndDate("");
     setActiveQuick(null);
@@ -36,13 +49,18 @@ export default function DashboardFilter() {
     fetchTransactions({});
   };
 
-  const formatDate = (date) => date.toISOString().slice(0, 10);
-
   const quickFilter = (type) => {
     const today = new Date();
-
-    let start = new Date();
-    let end = new Date();
+    let start = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const end = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
 
     switch (type) {
       case "today":
@@ -68,18 +86,18 @@ export default function DashboardFilter() {
         break;
     }
 
-    const filters = {
-      start_date: formatDate(start),
-      end_date: formatDate(end),
+    const nextFilters = {
+      start_date: formatLocalDate(start),
+      end_date: formatLocalDate(end),
     };
 
-    setStartDate(filters.start_date);
-    setEndDate(filters.end_date);
+    setStartDate(nextFilters.start_date);
+    setEndDate(nextFilters.end_date);
     setActiveQuick(type);
     setDateError("");
 
-    setFilters(filters);
-    fetchTransactions(filters);
+    setFilters(nextFilters);
+    fetchTransactions(nextFilters);
   };
 
   const quickOptions = [
@@ -102,6 +120,7 @@ export default function DashboardFilter() {
           {quickOptions.map((opt) => (
             <button
               key={opt.key}
+              type="button"
               className={`btn ${activeQuick === opt.key ? "btn-accent" : "btn-ghost"}`}
               onClick={() => quickFilter(opt.key)}
               style={{
@@ -118,10 +137,14 @@ export default function DashboardFilter() {
 
       <div className="filter-row">
         <div>
-          <label className="label">From Date</label>
+          <label className="label" htmlFor="filter-from-date">
+            From Date
+          </label>
           <input
+            id="filter-from-date"
             className="input"
             type="date"
+            max={endDate || todayStr}
             value={startDate}
             onChange={(e) => {
               setStartDate(e.target.value);
@@ -132,10 +155,15 @@ export default function DashboardFilter() {
         </div>
 
         <div>
-          <label className="label">To Date</label>
+          <label className="label" htmlFor="filter-to-date">
+            To Date
+          </label>
           <input
+            id="filter-to-date"
             className="input"
             type="date"
+            min={startDate || undefined}
+            max={todayStr}
             value={endDate}
             onChange={(e) => {
               setEndDate(e.target.value);
@@ -146,14 +174,26 @@ export default function DashboardFilter() {
         </div>
 
         <div className="filter-buttons">
-          <button className="btn btn-accent" onClick={applyFilter}>
+          <button
+            type="button"
+            className="btn btn-accent"
+            onClick={applyFilter}
+          >
             Apply
           </button>
 
           <button
+            type="button"
             className="btn btn-ghost"
             onClick={resetFilter}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            disabled={!hasActiveFilter}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              opacity: hasActiveFilter ? 1 : 0.5,
+              cursor: hasActiveFilter ? "pointer" : "not-allowed",
+            }}
             title="Reset filters"
           >
             <RotateCcw size={14} />
@@ -163,7 +203,15 @@ export default function DashboardFilter() {
       </div>
 
       {dateError && (
-        <p style={{ color: "var(--color-alert)", fontSize: 13, marginTop: 10, marginBottom: 0 }}>
+        <p
+          role="alert"
+          style={{
+            color: "var(--color-alert)",
+            fontSize: 13,
+            marginTop: 10,
+            marginBottom: 0,
+          }}
+        >
           {dateError}
         </p>
       )}

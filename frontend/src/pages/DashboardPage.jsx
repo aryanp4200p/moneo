@@ -310,8 +310,27 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="dashboard-date">
-          📅{" "}
+        <div
+          className="dashboard-date"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 14px",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              flexShrink: 0,
+              lineHeight: 1,
+            }}
+          >
+            📅
+          </span>
+
           <select
             className="dashboard-month-select"
             value={`${selectedYear}-${selectedMonth}`}
@@ -321,6 +340,12 @@ export default function DashboardPage() {
               setSelectedMonth(month);
             }}
             aria-label="Select dashboard month"
+            style={{
+              width: "auto",
+              flex: 1,
+              minWidth: 0,
+              margin: 0,
+            }}
           >
             {monthOptions.map((option) => (
               <option
