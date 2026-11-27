@@ -2,21 +2,8 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-# Keep your existing FastAPI app initialization
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://moneo-vert.vercel.app",
-        "http://localhost:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from core.config import settings
 from core.database import Base, engine
@@ -121,11 +108,21 @@ app.mount(
 # CORS
 # ============================================================
 
+allowed_origins = list(
+    {
+        origin
+        for origin in [
+            settings.FRONTEND_ORIGIN,
+            "https://moneo-vert.vercel.app",
+            "http://localhost:5173",
+        ]
+        if origin
+    }
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_ORIGIN,
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -143,7 +140,11 @@ app.include_router(
 app.include_router(
     transactions.router,
 )
-app.include_router(receipt_ocr_router)
+
+app.include_router(
+    receipt_ocr_router,
+)
+
 app.include_router(
     budgets.router,
 )
@@ -165,9 +166,6 @@ app.include_router(
 )
 
 
-
-
-
 # ============================================================
 # DATABASE STARTUP
 # ============================================================
@@ -175,14 +173,31 @@ app.include_router(
 @app.on_event("startup")
 def on_startup():
     """
-    Create any missing tables.
-
-    Existing Alembic migrations remain the source of truth
-    for database schema changes.
+    Create any missing tables and safely add new columns/indexes
+    needed for refresh token rotation.
     """
     Base.metadata.create_all(
         bind=engine,
     )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE user_sessions
+                  ADD COLUMN IF NOT EXISTS refresh_token_hash VARCHAR(128),
+                  ADD COLUMN IF NOT EXISTS refresh_token_expires_at TIMESTAMPTZ;
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_user_sessions_refresh_token_hash
+                ON user_sessions (refresh_token_hash);
+                """
+            )
+        )
 
 
 # ============================================================

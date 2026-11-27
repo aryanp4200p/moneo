@@ -4,13 +4,14 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://finance_user:finance_pass@localhost:5432/finance_manager"
 
-    # JWT
+    # JWT & Session Lifetimes
     SECRET_KEY: str = "dev-secret-change-me"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     IDLE_TIMEOUT_MINUTES: int = 30
-    MAX_SESSION_DAYS: int = 7  
+    MAX_SESSION_DAYS: int = 7
 
     # AI Advisor
     AI_PROVIDER: str = "ollama"
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        extra="ignore"
+        extra="ignore",
     )
 
 

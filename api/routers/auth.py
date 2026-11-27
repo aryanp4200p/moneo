@@ -19,11 +19,15 @@ from core.security import (
     clear_expired_login_lock,
     create_access_token,
     create_password_reset_expiry,
+    create_refresh_token,
+    create_refresh_token_expiry,
     decode_access_token,
+    decode_refresh_token,
     generate_password_reset_token,
     get_current_user,
     get_lockout_remaining_minutes,
     hash_password,
+    hash_refresh_token,
     hash_reset_token,
     is_account_locked,
     is_reset_token_expired,
@@ -39,6 +43,7 @@ from schemas.user import (
     AccountDeleteRequest,
     ForgotPasswordRequest,
     PasswordUpdate,
+    RefreshTokenRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
     Token,
@@ -64,8 +69,10 @@ OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_COOLDOWN_SECONDS = 60
 
+
 def hash_email_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode("utf-8")).hexdigest()
+
 
 def send_verification_otp(
     user: User,
@@ -76,7 +83,6 @@ def send_verification_otp(
 
     last_sent = user.email_otp_last_sent_at
 
-    # Handle timestamps returned without timezone information.
     if last_sent is not None and last_sent.tzinfo is None:
         last_sent = last_sent.replace(tzinfo=timezone.utc)
 
@@ -94,9 +100,9 @@ def send_verification_otp(
     if not os.getenv("BREVO_API_KEY"):
         logger.error("Brevo API key is not configured")
         raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Email verification is temporarily unavailable.",
-    )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email verification is temporarily unavailable.",
+        )
 
     otp = f"{secrets.randbelow(1_000_000):06d}"
     safe_name = html.escape(user.name or "there")
@@ -116,7 +122,6 @@ def send_verification_otp(
     </div>
     """
 
-    # Never return the OTP in the API response.
     try:
         send_email(
             to_email=user.email,
@@ -130,7 +135,6 @@ def send_verification_otp(
             detail="Unable to send the verification email. Please try again later.",
         )
 
-    # Store only the hash and expiration.
     user.email_otp_hash = hash_email_otp(otp)
     user.email_otp_expires_at = (
         now + timedelta(minutes=OTP_EXPIRY_MINUTES)
@@ -149,176 +153,107 @@ def send_verification_otp(
             detail="Unable to complete the verification request.",
         )
 
+
 # ==========================================================
-
 # Helper: Create Server-Side Session
-
 # ==========================================================
 
 def create_user_session(
-
     user: User,
-
     db: Session,
-
     request: Request,
-
-):
-
+) -> UserSession:
     session_id = uuid.uuid4().hex
 
     user_agent = request.headers.get(
-
         "user-agent",
-
         "Unknown device",
-
     )
 
-    forwarded_for = request.headers.get(
-
-        "x-forwarded-for"
-
-    )
+    forwarded_for = request.headers.get("x-forwarded-for")
 
     if forwarded_for:
-
         ip_address = forwarded_for.split(",")[0].strip()
-
     else:
-
         ip_address = (
-
             request.client.host
-
             if request.client
-
             else "Unknown"
-
         )
 
     session = UserSession(
-
         session_id=session_id,
-
         user_id=user.id,
-
         device_name=user_agent[:255],
-
         ip_address=ip_address,
-
         is_active=True,
-
     )
 
     db.add(session)
-
     db.commit()
-
     db.refresh(session)
 
     return session
 
-# ==========================================================
-
-# Helper: Create Session-Aware JWT
 
 # ==========================================================
+# Helper: Issue Session-Aware Access + Refresh Token Pair
+# ==========================================================
 
-def create_session_token(
-
+def issue_session_tokens(
     user: User,
-
     session: UserSession,
+    db: Session,
+) -> tuple[str, str]:
+    token_claims = {
+        "sub": str(user.id),
+        "session_id": session.session_id,
+    }
 
-):
+    access_token = create_access_token(token_claims)
+    refresh_token = create_refresh_token(token_claims)
 
-    return create_access_token(
+    session.refresh_token_hash = hash_refresh_token(refresh_token)
+    session.refresh_token_expires_at = create_refresh_token_expiry()
+    session.last_active_at = datetime.now(timezone.utc)
+    db.commit()
 
-        {
+    return access_token, refresh_token
 
-            "sub": str(user.id),
-
-            "session_id": session.session_id,
-
-        }
-
-    )
 
 # ==========================================================
-
 # Helper: Handle Failed Login
-
 # ==========================================================
 
 def handle_failed_login(
-
     user: User | None,
-
     db: Session,
-
 ):
-
-    """
-
-    Register a failed login attempt.
-
-    If the user exists:
-
-        - increment failed attempts
-
-        - lock after 5 failures
-
-        - lock for 15 minutes
-
-    If the user doesn't exist:
-
-        - return the same generic error
-
-        - don't reveal whether the account exists
-
-    """
-
     if user is None:
-
         raise HTTPException(
-
             status_code=status.HTTP_401_UNAUTHORIZED,
-
             detail="Incorrect email or password",
-
         )
 
     locked = register_failed_login(user)
-
     db.commit()
 
     if locked:
-
         raise HTTPException(
-
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-
             detail=(
-
                 "Too many failed login attempts. "
-
                 "Your account has been locked for 15 minutes."
-
             ),
-
         )
 
     raise HTTPException(
-
         status_code=status.HTTP_401_UNAUTHORIZED,
-
         detail="Incorrect email or password",
-
     )
 
-# ==========================================================
 
+# ==========================================================
 # Register
 # ==========================================================
 
@@ -327,7 +262,6 @@ def register(
     payload: UserRegister,
     db: Session = Depends(get_db),
 ):
-    
     email = str(payload.email).strip().lower()
     existing = db.query(User).filter(User.email == email).first()
 
@@ -376,6 +310,7 @@ def register(
         "email": user.email,
         "message": "Verification code sent to your email.",
     }
+
 
 @router.post("/verify-email", response_model=Token)
 def verify_email(
@@ -457,7 +392,6 @@ def verify_email(
     db.commit()
     db.refresh(user)
 
-    # Welcome email is best-effort: a mail-provider issue must not undo verification.
     try:
         safe_name = html.escape(user.name or "there")
         send_email(
@@ -475,12 +409,14 @@ def verify_email(
         logger.exception("Welcome email failed for user id %s", user.id)
 
     session = create_user_session(user, db, request)
-    token = create_session_token(user, session)
+    access_token, refresh_token = issue_session_tokens(user, session, db)
 
     return Token(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
         user=UserOut.model_validate(user),
     )
+
 
 @router.post("/resend-verification")
 def resend_verification(
@@ -501,119 +437,49 @@ def resend_verification(
     send_verification_otp(user, db)
     return generic_response
 
+
+# ==========================================================
 # Normal Application Login
-
 # ==========================================================
 
 @router.post(
-
     "/login",
-
     response_model=Token,
-
 )
-
 def login(
-
     payload: UserLogin,
-
     request: Request,
-
     db: Session = Depends(get_db),
-
 ):
-
     user = (
-
         db.query(User)
-
         .filter(User.email == payload.email.lower())
-
         .first()
-
     )
 
-    # ------------------------------------------------------
-
-    # User doesn't exist
-
-    # ------------------------------------------------------
-
     if user is None:
-
-        handle_failed_login(
-
-            None,
-
-            db,
-
-        )
-
-    # ------------------------------------------------------
-
-    # Check account lock
-
-    # ------------------------------------------------------
+        handle_failed_login(None, db)
 
     if is_account_locked(user):
-
         remaining = get_lockout_remaining_minutes(user)
-
         raise HTTPException(
-
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-
             detail=(
-
                 f"Too many failed login attempts. "
-
                 f"Try again in {remaining} minute"
-
                 f"{'s' if remaining != 1 else ''}."
-
             ),
-
         )
-
-    # ------------------------------------------------------
-
-    # If previous lock expired, clear it
-
-    # ------------------------------------------------------
 
     if user.locked_until is not None:
-
         clear_expired_login_lock(user)
-
         db.commit()
 
-    # ------------------------------------------------------
-
-    # Verify password
-
-    # ------------------------------------------------------
-
     if not verify_password(
-
         payload.password,
-
         user.hashed_password,
-
     ):
-
-        handle_failed_login(
-
-            user,
-
-            db,
-
-        )
-
-    # ------------------------------------------------------
-
-    # Successful login
-
-    # ------------------------------------------------------
+        handle_failed_login(user, db)
 
     if not user.email_verified:
         raise HTTPException(
@@ -622,150 +488,60 @@ def login(
         )
 
     reset_failed_login_attempts(user)
-
     db.commit()
 
-    session = create_user_session(
-
-        user,
-
-        db,
-
-        request,
-
-    )
-
-    token = create_session_token(
-
-        user,
-
-        session,
-
-    )
+    session = create_user_session(user, db, request)
+    access_token, refresh_token = issue_session_tokens(user, session, db)
 
     return Token(
-
-        access_token=token,
-
+        access_token=access_token,
+        refresh_token=refresh_token,
         user=UserOut.model_validate(user),
-
     )
 
+
 # ==========================================================
-
 # Swagger Login
-
 # ==========================================================
 
 @router.post(
-
     "/token",
-
     response_model=Token,
-
 )
-
 def login_for_swagger(
-
     request: Request,
-
     form_data: OAuth2PasswordRequestForm = Depends(),
-
     db: Session = Depends(get_db),
-
 ):
-
     user = (
-
         db.query(User)
-
         .filter(User.email == form_data.username.lower())
-
         .first()
-
     )
 
-    # ------------------------------------------------------
-
-    # User doesn't exist
-
-    # ------------------------------------------------------
-
     if user is None:
-
-        handle_failed_login(
-
-            None,
-
-            db,
-
-        )
-
-    # ------------------------------------------------------
-
-    # Check account lock
-
-    # ------------------------------------------------------
+        handle_failed_login(None, db)
 
     if is_account_locked(user):
-
         remaining = get_lockout_remaining_minutes(user)
-
         raise HTTPException(
-
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-
             detail=(
-
                 f"Too many failed login attempts. "
-
                 f"Try again in {remaining} minute"
-
                 f"{'s' if remaining != 1 else ''}."
-
             ),
-
         )
-
-    # ------------------------------------------------------
-
-    # Clear expired lock
-
-    # ------------------------------------------------------
 
     if user.locked_until is not None:
-
         clear_expired_login_lock(user)
-
         db.commit()
 
-    # ------------------------------------------------------
-
-    # Verify password
-
-    # ------------------------------------------------------
-
     if not verify_password(
-
         form_data.password,
-
         user.hashed_password,
-
     ):
-
-        handle_failed_login(
-
-            user,
-
-            db,
-
-        )
-
-    # ------------------------------------------------------
-
-    # Successful login
-
-    # ------------------------------------------------------
+        handle_failed_login(user, db)
 
     if not user.email_verified:
         raise HTTPException(
@@ -774,39 +550,115 @@ def login_for_swagger(
         )
 
     reset_failed_login_attempts(user)
-
     db.commit()
 
-    session = create_user_session(
+    session = create_user_session(user, db, request)
+    access_token, refresh_token = issue_session_tokens(user, session, db)
 
-        user,
-
-        db,
-
-        request,
-
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserOut.model_validate(user),
     )
 
-    token = create_session_token(
 
+# ==========================================================
+# Refresh Access Token (with Refresh Token Rotation)
+# ==========================================================
+
+@router.post(
+    "/refresh",
+    response_model=Token,
+)
+def refresh_access_token(
+    payload: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    invalid_token_exc = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired refresh token. Please log in again.",
+    )
+
+    try:
+        claims = decode_refresh_token(payload.refresh_token)
+        user_id = int(claims.get("sub"))
+        session_id = claims.get("session_id")
+        if not session_id:
+            raise invalid_token_exc
+    except (JWTError, TypeError, ValueError):
+        raise invalid_token_exc
+
+    user_session = (
+        db.query(UserSession)
+        .filter(
+            UserSession.session_id == session_id,
+            UserSession.user_id == user_id,
+        )
+        .first()
+    )
+
+    if user_session is None or not user_session.is_active:
+        raise invalid_token_exc
+
+    # Verify hashed refresh token; if mismatched, revoke session (possible token replay)
+    supplied_hash = hash_refresh_token(payload.refresh_token)
+    if (
+        not user_session.refresh_token_hash
+        or not hmac.compare_digest(supplied_hash, user_session.refresh_token_hash)
+    ):
+        user_session.is_active = False
+        user_session.refresh_token_hash = None
+        db.commit()
+        raise invalid_token_exc
+
+    now = datetime.now(timezone.utc)
+
+    created_at = user_session.created_at
+    last_active_at = user_session.last_active_at
+    token_expires_at = user_session.refresh_token_expires_at
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if last_active_at.tzinfo is None:
+        last_active_at = last_active_at.replace(tzinfo=timezone.utc)
+    if token_expires_at is not None and token_expires_at.tzinfo is None:
+        token_expires_at = token_expires_at.replace(tzinfo=timezone.utc)
+
+    # Enforce refresh expiry, max session lifetime, and idle timeout
+    if (
+        (token_expires_at is not None and now >= token_expires_at)
+        or now >= created_at + timedelta(days=settings.MAX_SESSION_DAYS)
+        or now >= last_active_at + timedelta(minutes=settings.IDLE_TIMEOUT_MINUTES)
+    ):
+        user_session.is_active = False
+        user_session.refresh_token_hash = None
+        db.commit()
+        raise invalid_token_exc
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        user_session.is_active = False
+        user_session.refresh_token_hash = None
+        db.commit()
+        raise invalid_token_exc
+
+    # Rotate both tokens and extend session activity
+    new_access_token, new_refresh_token = issue_session_tokens(
         user,
-
-        session,
-
+        user_session,
+        db,
     )
 
     return Token(
-
-        access_token=token,
-
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
         user=UserOut.model_validate(user),
-
     )
 
+
 # ==========================================================
-
 # Forgot Password
-
+# ==========================================================
 
 @router.post("/forgot-password")
 def forgot_password(
@@ -889,8 +741,10 @@ def forgot_password(
     logger.info("Password reset email accepted for delivery")
     return generic_response
 
-# ==========================================================
 
+# ==========================================================
+# Reset Password
+# ==========================================================
 
 @router.post("/reset-password")
 def reset_password(
@@ -898,7 +752,6 @@ def reset_password(
     db: Session = Depends(get_db),
 ):
     """Reset password using a valid, unexpired reset token."""
-
     token_hash = hash_reset_token(payload.token)
 
     user = (
@@ -907,7 +760,6 @@ def reset_password(
         .first()
     )
 
-    # Diagnostic: never log the actual token or its hash.
     if user is None:
         logger.warning(
             "Password reset rejected: token hash did not match any user"
@@ -917,11 +769,8 @@ def reset_password(
             detail="Invalid or expired password reset token.",
         )
 
-    logger.info("Password reset token matched a user")
-
     if is_reset_token_expired(user):
         logger.warning("Password reset rejected: token expired")
-
         user.password_reset_token_hash = None
         user.password_reset_expires_at = None
         db.commit()
@@ -931,23 +780,21 @@ def reset_password(
             detail="Invalid or expired password reset token.",
         )
 
-    # Update password.
     user.hashed_password = hash_password(payload.new_password)
-
-    # Reset login security state.
     user.failed_login_attempts = 0
     user.locked_until = None
-
-    # Invalidate the token so it cannot be reused.
     user.password_reset_token_hash = None
     user.password_reset_expires_at = None
 
-    # Revoke all active sessions after a password reset.
+    # Revoke all active sessions & invalidate refresh tokens
     db.query(UserSession).filter(
         UserSession.user_id == user.id,
         UserSession.is_active.is_(True),
     ).update(
-        {UserSession.is_active: False},
+        {
+            UserSession.is_active: False,
+            UserSession.refresh_token_hash: None,
+        },
         synchronize_session=False,
     )
 
@@ -961,8 +808,6 @@ def reset_password(
             detail="Unable to reset your password. Please try again.",
         )
 
-    logger.info("Password reset completed successfully")
-
     return {
         "success": True,
         "message": (
@@ -973,740 +818,387 @@ def reset_password(
 
 
 # ==========================================================
-
 # Get Current Profile
-
 # ==========================================================
 
 @router.get(
-
     "/me",
-
     response_model=UserOut,
-
 )
-
 def get_profile(
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     return current_user
 
+
 # ==========================================================
-
 # Update Profile Information
-
 # ==========================================================
 
 @router.put(
-
     "/profile",
-
     response_model=UserOut,
-
 )
-
 def update_profile(
-
     name: str | None = None,
-
     email: str | None = None,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     if name is not None:
-
         name = name.strip()
-
         if not name:
-
             raise HTTPException(
-
                 status_code=400,
-
                 detail="Name cannot be empty.",
-
             )
-
         current_user.name = name
 
     if email is not None:
-
         email = email.strip().lower()
-
         existing = (
-
             db.query(User)
-
             .filter(
-
                 User.email == email,
-
                 User.id != current_user.id,
-
             )
-
             .first()
-
         )
-
         if existing:
-
             raise HTTPException(
-
                 status_code=400,
-
                 detail="Email is already registered.",
-
             )
-
         current_user.email = email
 
     db.commit()
-
     db.refresh(current_user)
-
     return current_user
 
+
 # ==========================================================
-
 # Upload Profile Image
-
 # ==========================================================
 
 @router.post(
-
     "/profile-image",
-
     response_model=UserOut,
-
 )
-
 async def upload_profile_image(
-
     file: UploadFile = File(...),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     allowed_types = {
-
         "image/jpeg": ".jpg",
-
         "image/png": ".png",
-
         "image/webp": ".webp",
-
     }
 
     if file.content_type not in allowed_types:
-
         raise HTTPException(
-
             status_code=400,
-
             detail="Only JPG, PNG, and WEBP images are allowed.",
-
         )
 
     contents = await file.read()
-
     max_size = 5 * 1024 * 1024
 
     if len(contents) > max_size:
-
         raise HTTPException(
-
             status_code=400,
-
             detail="Profile image must be smaller than 5 MB.",
-
         )
 
     upload_dir = os.path.join(
-
         os.path.dirname(os.path.dirname(__file__)),
-
         "uploads",
-
         "profile",
-
     )
+    os.makedirs(upload_dir, exist_ok=True)
 
-    os.makedirs(
-
-        upload_dir,
-
-        exist_ok=True,
-
-    )
-
-    extension = allowed_types[
-
-        file.content_type
-
-    ]
-
-    filename = (
-
-        f"{current_user.id}_"
-
-        f"{uuid.uuid4().hex}"
-
-        f"{extension}"
-
-    )
-
-    file_path = os.path.join(
-
-        upload_dir,
-
-        filename,
-
-    )
+    extension = allowed_types[file.content_type]
+    filename = f"{current_user.id}_{uuid.uuid4().hex}{extension}"
+    file_path = os.path.join(upload_dir, filename)
 
     with open(file_path, "wb") as image_file:
-
         image_file.write(contents)
 
-    current_user.profile_image_url = (
-
-        f"/uploads/profile/{filename}"
-
-    )
-
+    current_user.profile_image_url = f"/uploads/profile/{filename}"
     db.commit()
-
     db.refresh(current_user)
-
     return current_user
 
+
 # ==========================================================
-
 # Delete Profile Image
-
 # ==========================================================
 
 @router.delete(
-
     "/profile-image",
-
     response_model=UserOut,
-
 )
-
 def delete_profile_image(
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     if current_user.profile_image_url:
-
         file_path = os.path.join(
-
             os.path.dirname(os.path.dirname(__file__)),
-
             current_user.profile_image_url.lstrip("/"),
-
         )
-
         if os.path.exists(file_path):
-
             os.remove(file_path)
 
         current_user.profile_image_url = None
-
         db.commit()
-
         db.refresh(current_user)
 
     return current_user
 
+
 # ==========================================================
-
 # Change Password
-
 # ==========================================================
 
 @router.put("/change-password")
-
 def change_password(
-
     payload: PasswordUpdate,
-
     token: str = Depends(oauth2_scheme),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
-    # ------------------------------------------------------
-
-    # Verify current password
-
-    # ------------------------------------------------------
-
     if not verify_password(
-
         payload.current_password,
-
         current_user.hashed_password,
-
     ):
-
         raise HTTPException(
-
             status_code=400,
-
             detail="Current password is incorrect",
-
         )
-
-    # ------------------------------------------------------
-
-    # Prevent same password
-
-    # ------------------------------------------------------
 
     if verify_password(
-
         payload.new_password,
-
         current_user.hashed_password,
-
     ):
-
         raise HTTPException(
-
             status_code=400,
-
             detail=(
-
                 "New password cannot be the same "
-
                 "as the current password."
-
             ),
-
         )
 
-    # ------------------------------------------------------
-
-    # Update password
-
-    # ------------------------------------------------------
-
-    current_user.hashed_password = hash_password(
-
-        payload.new_password
-
-    )
-
-    # Reset failed login state.
-
+    current_user.hashed_password = hash_password(payload.new_password)
     current_user.failed_login_attempts = 0
-
     current_user.locked_until = None
 
-    # ------------------------------------------------------
-
-    # Identify current session
-
-    # ------------------------------------------------------
-
     try:
-
         payload_data = decode_access_token(token)
-
-        current_session_id = payload_data.get(
-
-            "session_id"
-
-        )
-
+        current_session_id = payload_data.get("session_id")
     except JWTError:
-
         raise HTTPException(
-
             status_code=401,
-
             detail="Invalid session.",
-
         )
 
     if not current_session_id:
-
         raise HTTPException(
-
             status_code=401,
-
             detail="Invalid session.",
-
         )
 
-    # ------------------------------------------------------
-
-    # Revoke OTHER sessions
-
-    #
-
-    # Current device remains logged in.
-
-    # ------------------------------------------------------
-
     db.query(UserSession).filter(
-
         UserSession.user_id == current_user.id,
-
         UserSession.session_id != current_session_id,
-
         UserSession.is_active.is_(True),
-
     ).update(
-
         {
-
             UserSession.is_active: False,
-
+            UserSession.refresh_token_hash: None,
         },
-
         synchronize_session=False,
-
     )
 
     db.commit()
 
     return {
-
         "success": True,
-
         "message": (
-
             "Password updated successfully. "
-
             "Other active sessions have been logged out."
-
         ),
-
     }
 
+
 # ==========================================================
-
 # Account Deletion
-
 # ==========================================================
 
 @router.delete("/account")
-
 def delete_account(
-
     payload: AccountDeleteRequest,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     if not verify_password(
-
         payload.password,
-
         current_user.hashed_password,
-
     ):
-
         raise HTTPException(
-
             status_code=400,
-
             detail="Incorrect password.",
-
         )
 
     if current_user.profile_image_url:
-
         file_path = os.path.join(
-
             os.path.dirname(os.path.dirname(__file__)),
-
             current_user.profile_image_url.lstrip("/"),
-
         )
-
         if os.path.exists(file_path):
-
             os.remove(file_path)
 
     db.delete(current_user)
-
     db.commit()
 
     return {
-
         "success": True,
-
         "message": "Account deleted successfully.",
-
     }
 
+
 # ==========================================================
-
 # Get Active Sessions
-
 # ==========================================================
 
 @router.get(
-
     "/sessions",
-
     response_model=list[SessionOut],
-
 )
-
 def get_sessions(
-
     token: str = Depends(oauth2_scheme),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     try:
-
         payload = decode_access_token(token)
-
-        current_session_id = payload.get(
-
-            "session_id"
-
-        )
+        current_session_id = payload.get("session_id")
 
         if not current_session_id:
-
             raise HTTPException(
-
                 status_code=401,
-
                 detail="Invalid session.",
-
             )
-
     except JWTError:
-
         raise HTTPException(
-
             status_code=401,
-
             detail="Invalid session.",
-
         )
 
     sessions = (
-
         db.query(UserSession)
-
         .filter(
-
             UserSession.user_id == current_user.id,
-
             UserSession.is_active.is_(True),
-
         )
-
-        .order_by(
-
-            UserSession.last_active_at.desc()
-
-        )
-
+        .order_by(UserSession.last_active_at.desc())
         .all()
-
     )
 
-    result = []
-
-    for session in sessions:
-
-        session_data = SessionOut(
-
+    return [
+        SessionOut(
             session_id=session.session_id,
-
             device_name=session.device_name,
-
             ip_address=session.ip_address,
-
             created_at=session.created_at,
-
             last_active_at=session.last_active_at,
-
             is_active=session.is_active,
-
-            is_current=(
-
-                session.session_id
-
-                == current_session_id
-
-            ),
-
+            is_current=(session.session_id == current_session_id),
         )
+        for session in sessions
+    ]
 
-        result.append(session_data)
-
-    return result
 
 # ==========================================================
-
 # Logout Current Session
-
 # ==========================================================
 
 @router.post("/logout")
-
 def logout(
-
     token: str = Depends(oauth2_scheme),
-
     db: Session = Depends(get_db),
-
 ):
-
     try:
-
         payload = decode_access_token(token)
-
-        session_id = payload.get(
-
-            "session_id"
-
-        )
+        session_id = payload.get("session_id")
 
         if not session_id:
-
             raise HTTPException(
-
                 status_code=401,
-
                 detail="Invalid session.",
-
             )
-
     except JWTError:
-
         raise HTTPException(
-
             status_code=401,
-
             detail="Invalid session.",
-
         )
 
     session = (
-
         db.query(UserSession)
-
-        .filter(
-
-            UserSession.session_id == session_id,
-
-        )
-
+        .filter(UserSession.session_id == session_id)
         .first()
-
     )
 
     if session:
-
         session.is_active = False
-
+        session.refresh_token_hash = None
         db.commit()
 
     return {
-
         "success": True,
-
         "message": "Logged out successfully.",
-
     }
 
-# ==========================================================
 
+# ==========================================================
 # Revoke Selected Session
-
 # ==========================================================
 
-@router.delete(
-
-    "/sessions/{session_id}"
-
-)
-
+@router.delete("/sessions/{session_id}")
 def revoke_session(
-
     session_id: str,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     session = (
-
         db.query(UserSession)
-
         .filter(
-
             UserSession.session_id == session_id,
-
             UserSession.user_id == current_user.id,
-
             UserSession.is_active.is_(True),
-
         )
-
         .first()
-
     )
 
     if not session:
-
         raise HTTPException(
-
             status_code=404,
-
             detail="Session not found.",
-
         )
 
     session.is_active = False
-
+    session.refresh_token_hash = None
     db.commit()
 
     return {
-
         "success": True,
-
         "message": "Session revoked successfully.",
-
     }
+
+
+# ==========================================================
+# Update Session Activity
+# ==========================================================
 
 @router.post("/activity")
 def update_session_activity(
@@ -1757,6 +1249,7 @@ def update_session_activity(
         )
     ):
         user_session.is_active = False
+        user_session.refresh_token_hash = None
         db.commit()
         raise HTTPException(status_code=401, detail="Session expired.")
 
@@ -1765,94 +1258,52 @@ def update_session_activity(
 
     return {"message": "Activity updated"}
 
-# ==========================================================
 
+# ==========================================================
 # Logout All Other Sessions
-
 # ==========================================================
 
-@router.post(
-
-    "/sessions/logout-others"
-
-)
-
+@router.post("/sessions/logout-others")
 def logout_other_sessions(
-
     token: str = Depends(oauth2_scheme),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     try:
-
         payload = decode_access_token(token)
-
-        current_session_id = payload.get(
-
-            "session_id"
-
-        )
+        current_session_id = payload.get("session_id")
 
         if not current_session_id:
-
             raise HTTPException(
-
                 status_code=401,
-
                 detail="Invalid session.",
-
             )
-
     except JWTError:
-
         raise HTTPException(
-
             status_code=401,
-
             detail="Invalid session.",
-
         )
 
     updated = (
-
         db.query(UserSession)
-
         .filter(
-
             UserSession.user_id == current_user.id,
-
             UserSession.session_id != current_session_id,
-
             UserSession.is_active.is_(True),
-
         )
-
         .update(
-
             {
-
                 UserSession.is_active: False,
-
+                UserSession.refresh_token_hash: None,
             },
-
             synchronize_session=False,
-
         )
-
     )
 
     db.commit()
 
     return {
-
         "success": True,
-
         "message": "All other sessions have been logged out.",
-
         "sessions_revoked": updated,
-
     }

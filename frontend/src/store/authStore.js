@@ -4,8 +4,11 @@ import api from "../services/api";
 export const useAuthStore = create((set) => ({
   user: JSON.parse(localStorage.getItem("fm_user")),
   token: localStorage.getItem("fm_token") || null,
+  refreshToken: localStorage.getItem("fm_refresh_token") || null,
   loading: false,
   error: null,
+
+  clearError: () => set({ error: null }),
 
   // =====================================================
   // REGISTER
@@ -21,8 +24,6 @@ export const useAuthStore = create((set) => ({
         password,
       });
 
-      // Registration only sends the OTP.
-      // Do not log the user in until the email is verified.
       set({
         loading: false,
         error: null,
@@ -61,11 +62,13 @@ export const useAuthStore = create((set) => ({
       });
 
       localStorage.setItem("fm_token", data.access_token);
+      localStorage.setItem("fm_refresh_token", data.refresh_token);
       localStorage.setItem("fm_user", JSON.stringify(data.user));
 
       set({
         user: data.user,
         token: data.access_token,
+        refreshToken: data.refresh_token,
         loading: false,
         error: null,
       });
@@ -128,12 +131,13 @@ export const useAuthStore = create((set) => ({
       });
 
       localStorage.setItem("fm_token", data.access_token);
-
+      localStorage.setItem("fm_refresh_token", data.refresh_token);
       localStorage.setItem("fm_user", JSON.stringify(data.user));
 
       set({
         user: data.user,
         token: data.access_token,
+        refreshToken: data.refresh_token,
         loading: false,
         error: null,
       });
@@ -203,14 +207,14 @@ export const useAuthStore = create((set) => ({
         new_password: newPassword,
       });
 
-      // The reset endpoint logs out all sessions,
-      // so clear any locally stored login state.
       localStorage.removeItem("fm_token");
+      localStorage.removeItem("fm_refresh_token");
       localStorage.removeItem("fm_user");
 
       set({
         user: null,
         token: null,
+        refreshToken: null,
         loading: false,
         error: null,
       });
@@ -274,12 +278,13 @@ export const useAuthStore = create((set) => ({
       console.error("Server logout failed:", err);
     } finally {
       localStorage.removeItem("fm_token");
-
+      localStorage.removeItem("fm_refresh_token");
       localStorage.removeItem("fm_user");
 
       set({
         user: null,
         token: null,
+        refreshToken: null,
         error: null,
       });
     }
@@ -333,3 +338,26 @@ export const useAuthStore = create((set) => ({
     }
   },
 }));
+
+// Keep Zustand store synchronized when Axios refreshes or invalidates tokens
+if (typeof window !== "undefined") {
+  window.addEventListener("moneo:token-refreshed", (event) => {
+    const data = event.detail;
+    if (!data) return;
+
+    useAuthStore.setState((state) => ({
+      token: data.access_token || state.token,
+      refreshToken: data.refresh_token || state.refreshToken,
+      user: data.user || state.user,
+    }));
+  });
+
+  window.addEventListener("moneo:unauthorized", () => {
+    useAuthStore.setState({
+      user: null,
+      token: null,
+      refreshToken: null,
+      error: null,
+    });
+  });
+}

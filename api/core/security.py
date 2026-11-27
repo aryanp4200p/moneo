@@ -163,7 +163,7 @@ def create_password_reset_expiry() -> datetime:
 
 
 # =========================================================
-# CREATE JWT
+# ACCESS & REFRESH JWT TOKENS
 # =========================================================
 
 def create_access_token(data: dict) -> str:
@@ -174,7 +174,10 @@ def create_access_token(data: dict) -> str:
         + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "type": "access",
+    })
 
     return jwt.encode(
         to_encode,
@@ -183,16 +186,58 @@ def create_access_token(data: dict) -> str:
     )
 
 
-# =========================================================
-# DECODE JWT
-# =========================================================
+def create_refresh_token(data: dict) -> str:
+    to_encode = data.copy()
+
+    expire = (
+        datetime.now(timezone.utc)
+        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": secrets.token_hex(16),
+    })
+
+    return jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def create_refresh_token_expiry() -> datetime:
+    return (
+        datetime.now(timezone.utc)
+        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         settings.SECRET_KEY,
         algorithms=[settings.ALGORITHM],
     )
+    if payload.get("type") != "access":
+        raise JWTError("Invalid token type")
+    return payload
+
+
+def decode_refresh_token(token: str) -> dict:
+    payload = jwt.decode(
+        token,
+        settings.SECRET_KEY,
+        algorithms=[settings.ALGORITHM],
+    )
+    if payload.get("type") != "refresh":
+        raise JWTError("Invalid token type")
+    return payload
 
 
 # =========================================================
@@ -256,18 +301,20 @@ def get_current_user(
         days=settings.MAX_SESSION_DAYS
     )
     idle_expiry = last_active_at + timedelta(
-        minutes=IDLE_TIMEOUT_MINUTES
+        minutes=settings.IDLE_TIMEOUT_MINUTES
     )
 
     # Check absolute session lifetime.
     if now >= absolute_expiry:
         user_session.is_active = False
+        user_session.refresh_token_hash = None
         db.commit()
         raise credentials_exception
 
     # Check inactivity.
     if now >= idle_expiry:
         user_session.is_active = False
+        user_session.refresh_token_hash = None
         db.commit()
         raise credentials_exception
 
@@ -275,11 +322,8 @@ def get_current_user(
 
     if user is None:
         user_session.is_active = False
+        user_session.refresh_token_hash = None
         db.commit()
         raise credentials_exception
-
-    # IMPORTANT:
-    # Do not update last_active_at on every API request.
-    # We will add meaningful activity tracking separately.
 
     return user

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Lock,
@@ -6,7 +6,6 @@ import {
   EyeOff,
   LogIn,
   AlertCircle,
-  Wallet,
   ArrowRight,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
@@ -15,6 +14,7 @@ export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
   const error = useAuthStore((s) => s.error);
   const loading = useAuthStore((s) => s.loading);
+  const clearError = useAuthStore((s) => s.clearError);
 
   const navigate = useNavigate();
 
@@ -22,8 +22,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  // Clear any stale auth error when leaving /login (e.g., navigating to /register)
+  useEffect(() => {
+    return () => {
+      if (typeof clearError === "function") {
+        clearError();
+      } else {
+        useAuthStore.setState({ error: null });
+      }
+    };
+  }, [clearError]);
+
+  const handleClearError = () => {
+    if (!error) return;
+    if (typeof clearError === "function") {
+      clearError();
+    } else {
+      useAuthStore.setState({ error: null });
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    handleClearError();
 
     const ok = await login(email.trim(), password);
 
@@ -359,7 +380,10 @@ export default function LoginPage() {
                 placeholder="you@example.com"
                 autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  handleClearError();
+                  setEmail(e.target.value);
+                }}
                 required
               />
             </div>
@@ -394,7 +418,10 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    handleClearError();
+                    setPassword(e.target.value);
+                  }}
                   required
                 />
 
