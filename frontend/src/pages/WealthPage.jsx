@@ -120,6 +120,7 @@ export default function WealthPage() {
       setModal(false);
 
       await load();
+      window.dispatchEvent(new Event("moneo:wealth-updated"));
     } catch (err) {
       setError(err.response?.data?.detail || "Could not save wealth item.");
     } finally {
@@ -136,6 +137,7 @@ export default function WealthPage() {
       await api.delete(`/wealth/items/${id}`);
 
       await load();
+      window.dispatchEvent(new Event("moneo:wealth-updated"));
     } catch (err) {
       setError(err.response?.data?.detail || "Could not delete item.");
     }

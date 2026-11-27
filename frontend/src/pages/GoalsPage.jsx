@@ -35,6 +35,7 @@ export default function GoalsPage() {
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(goals));
+    window.dispatchEvent(new Event("moneo:goals-updated"));
   }, [goals, storageKey]);
 
   const totals = useMemo(() => {
