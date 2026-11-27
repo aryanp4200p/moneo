@@ -1,38 +1,73 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   Mail,
   ArrowLeft,
   KeyRound,
   AlertCircle,
   CheckCircle,
-  Wallet,
+  RefreshCw,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 
+const RESEND_COOLDOWN_SECONDS = 60;
+
 export default function ForgotPasswordPage() {
   const forgotPassword = useAuthStore((s) => s.forgotPassword);
+  const clearError = useAuthStore((s) => s.clearError);
   const loading = useAuthStore((s) => s.loading);
 
-  const [email, setEmail] = useState("");
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const initialEmail = searchParams.get("email") || location.state?.email || "";
+
+  const [email, setEmail] = useState(initialEmail);
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [resetToken, setResetToken] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    return () => {
+      if (typeof clearError === "function") {
+        clearError();
+      }
+    };
+  }, [clearError]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+
+    const timer = setInterval(() => {
+      setCooldown((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (loading || cooldown > 0) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
 
     setMessage("");
     setError("");
     setResetToken("");
 
     try {
-      const result = await forgotPassword(email.trim());
+      const result = await forgotPassword(normalizedEmail);
 
       if (result) {
+        setSubmittedEmail(normalizedEmail);
+        setCooldown(RESEND_COOLDOWN_SECONDS);
         setMessage(
           result.message ||
-            "If an account exists for this email, a password reset link has been generated.",
+            "If an account exists for this email, a password reset link has been sent.",
         );
 
         // Development/demo mode only.
@@ -79,7 +114,7 @@ export default function ForgotPasswordPage() {
         style={{
           backgroundColor: "rgba(255,255,255,0.94)",
           borderBottom: "1px solid #E8E9F3",
-          padding: "16px 24px",
+          padding: "14px 24px",
         }}
       >
         <div
@@ -90,7 +125,7 @@ export default function ForgotPasswordPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 24,
+            gap: 16,
             boxSizing: "border-box",
           }}
         >
@@ -99,7 +134,7 @@ export default function ForgotPasswordPage() {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 12,
+              gap: 8,
               textDecoration: "none",
               color: "#7957E8",
             }}
@@ -108,8 +143,8 @@ export default function ForgotPasswordPage() {
               src="/pwa-192x192.png"
               alt=""
               style={{
-                width: 44,
-                height: 44,
+                width: 38,
+                height: 38,
                 objectFit: "contain",
                 flexShrink: 0,
               }}
@@ -118,7 +153,7 @@ export default function ForgotPasswordPage() {
               src="/brand/moneo-wordmark-light.png"
               alt="Moneo"
               style={{
-                width: 100,
+                width: 96,
                 height: "auto",
                 objectFit: "contain",
                 flexShrink: 0,
@@ -130,9 +165,7 @@ export default function ForgotPasswordPage() {
             style={{
               color: "#64748B",
               fontSize: 14,
-              whiteSpace: "normal",
               textAlign: "right",
-              flexShrink: 1,
             }}
           >
             Personal finance, made clearer.
@@ -147,7 +180,7 @@ export default function ForgotPasswordPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "48px 20px",
+          padding: "36px 20px",
         }}
       >
         <section
@@ -192,14 +225,14 @@ export default function ForgotPasswordPage() {
 
           <p
             style={{
-              margin: "0 0 26px",
+              margin: "0 0 24px",
               color: "#64748B",
               fontSize: 15,
-              lineHeight: 1.7,
+              lineHeight: 1.65,
             }}
           >
-            No worries. Enter your email address and we’ll help you reset your
-            password.
+            No worries. Enter your email address and we’ll send you a link to
+            reset your password.
           </p>
 
           {error && (
@@ -218,7 +251,7 @@ export default function ForgotPasswordPage() {
                 lineHeight: 1.5,
               }}
             >
-              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>{error}</span>
             </div>
           )}
@@ -231,16 +264,31 @@ export default function ForgotPasswordPage() {
                 alignItems: "flex-start",
                 gap: 10,
                 marginBottom: 20,
-                padding: 12,
+                padding: 13,
                 borderRadius: 12,
                 backgroundColor: "#F0FDF4",
+                border: "1px solid #BBF7D0",
                 color: "#166534",
                 fontSize: 13,
-                lineHeight: 1.5,
+                lineHeight: 1.55,
               }}
             >
-              <CheckCircle size={18} style={{ flexShrink: 0 }} />
-              <span>{message}</span>
+              <CheckCircle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <div>{message}</div>
+                {submittedEmail && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: "#15803D",
+                    }}
+                  >
+                    Sent to <strong>{submittedEmail}</strong>. Check your inbox
+                    or spam folder.
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -259,7 +307,7 @@ export default function ForgotPasswordPage() {
               EMAIL ADDRESS
             </label>
 
-            <div style={{ position: "relative", marginBottom: 22 }}>
+            <div style={{ position: "relative", marginBottom: 20 }}>
               <Mail
                 size={18}
                 style={{
@@ -277,9 +325,13 @@ export default function ForgotPasswordPage() {
                 name="email"
                 type="email"
                 autoComplete="email"
+                autoFocus
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError("");
+                }}
                 style={inputStyle}
                 required
               />
@@ -287,23 +339,39 @@ export default function ForgotPasswordPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || cooldown > 0}
               style={{
                 width: "100%",
                 minHeight: 48,
                 padding: "13px 18px",
                 border: "none",
                 borderRadius: 12,
-                backgroundColor: loading ? "#A995ED" : "#7957E8",
+                backgroundColor:
+                  loading || cooldown > 0 ? "#A995ED" : "#7957E8",
                 color: "#FFFFFF",
                 fontSize: 15,
                 fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
+                cursor: loading || cooldown > 0 ? "not-allowed" : "pointer",
                 boxShadow: "0 6px 16px rgba(121,87,232,0.2)",
                 transition: "background-color 0.2s ease",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
               }}
             >
-              {loading ? "Sending..." : "Send Reset Link"}
+              {loading ? (
+                "Sending..."
+              ) : cooldown > 0 ? (
+                <>
+                  <RefreshCw size={15} />
+                  Resend Link in {cooldown}s
+                </>
+              ) : submittedEmail ? (
+                "Resend Reset Link"
+              ) : (
+                "Send Reset Link"
+              )}
             </button>
           </form>
 
@@ -397,7 +465,7 @@ export default function ForgotPasswordPage() {
           fontSize: 12,
         }}
       >
-        Moneo · Personal finance management
+        Moneo · Manage Today. Build Tomorrow.
       </footer>
     </div>
   );
