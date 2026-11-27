@@ -4040,3 +4040,47 @@ button:disabled {
     object-fit: contain !important;
   }
 }
+/* ============================================================
+   TYPOGRAPHY & MOBILE SELECTOR POLISH (FINAL)
+   ============================================================ */
+
+/* Crisp, uniform-width numerals for all financial figures */
+.finance-stat-card strong,
+.summary-value,
+.budget-remaining strong,
+.mini-budget-label strong,
+.transaction-amount,
+.trend-summary strong {
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="dark"] .dashboard-month-select option,
+html[data-theme="dark"] .dashboard-date option {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+/* Keep calendar icon and month dropdown side-by-side on mobile */
+@media (max-width: 900px) {
+  .dashboard-date {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: 100% !important;
+    padding: 8px 14px !important;
+  }
+
+  .dashboard-date select,
+  .dashboard-month-select {
+    width: auto !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
