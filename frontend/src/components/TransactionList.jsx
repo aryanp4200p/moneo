@@ -9,14 +9,22 @@ import {
   CheckSquare,
   Square,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useTransactionStore } from "../store/transactionStore";
 
 export default function TransactionList() {
-  const transactions = useTransactionStore((s) => s.transactions);
-  const fetchTransactions = useTransactionStore((s) => s.fetchTransactions);
+  const transactions = useTransactionStore((s) => s.paginatedTransactions);
+  const pagination = useTransactionStore((s) => s.pagination);
+  const fetchPaginatedTransactions = useTransactionStore(
+    (s) => s.fetchPaginatedTransactions,
+  );
+  const setPage = useTransactionStore((s) => s.setPage);
+  const setPageLimit = useTransactionStore((s) => s.setPageLimit);
   const deleteTransaction = useTransactionStore((s) => s.deleteTransaction);
-  const loading = useTransactionStore((s) => s.loading);
+  const loading = useTransactionStore((s) => s.paginatedLoading);
+  const storeFilters = useTransactionStore((s) => s.filters);
 
   // Global search support:
   // /transactions?search=amazon&highlight=123
@@ -47,8 +55,21 @@ export default function TransactionList() {
   });
 
   useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+    fetchPaginatedTransactions({
+      page: pagination.page,
+      limit: pagination.limit,
+      filters: {
+        ...storeFilters,
+        type: typeFilter === "all" ? "" : typeFilter,
+      },
+    });
+  }, [
+    fetchPaginatedTransactions,
+    pagination.page,
+    pagination.limit,
+    storeFilters,
+    typeFilter,
+  ]);
 
   // --------------------------------------------------
   // GLOBAL SEARCH -> TRANSACTION
@@ -98,24 +119,20 @@ export default function TransactionList() {
   }, [highlightedId, loading, transactions]);
 
   // --------------------------------------------------
-  // FILTERED TRANSACTIONS
+  // CLIENT-SIDE SEARCH WITHIN CURRENT PAGE
   // --------------------------------------------------
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((txn) => {
-      const matchesType = typeFilter === "all" || txn.type === typeFilter;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return transactions;
 
-      const q = searchQuery.toLowerCase().trim();
-
-      const matchesSearch =
-        !q ||
+    return transactions.filter(
+      (txn) =>
         (txn.category && txn.category.toLowerCase().includes(q)) ||
         (txn.note && txn.note.toLowerCase().includes(q)) ||
-        (txn.merchant && txn.merchant.toLowerCase().includes(q));
-
-      return matchesType && matchesSearch;
-    });
-  }, [transactions, searchQuery, typeFilter]);
+        (txn.merchant && txn.merchant.toLowerCase().includes(q)),
+    );
+  }, [transactions, searchQuery]);
 
   const allFilteredSelected =
     filteredTransactions.length > 0 &&
@@ -225,11 +242,18 @@ export default function TransactionList() {
     return { primary, secondary };
   };
 
+  const rangeStart =
+    pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+  const rangeEnd = Math.min(
+    pagination.page * pagination.limit,
+    pagination.total,
+  );
+
   // --------------------------------------------------
   // LOADING & EMPTY STATES
   // --------------------------------------------------
 
-  if (loading) {
+  if (loading && transactions.length === 0) {
     return (
       <div
         className="card"
@@ -244,7 +268,7 @@ export default function TransactionList() {
     );
   }
 
-  if (transactions.length === 0) {
+  if (pagination.total === 0 && typeFilter === "all" && !searchQuery) {
     return (
       <div
         className="card"
@@ -294,9 +318,7 @@ export default function TransactionList() {
         }}
       >
         <div>
-          <h3 style={{ margin: 0 }}>
-            Transactions ({filteredTransactions.length})
-          </h3>
+          <h3 style={{ margin: 0 }}>Transactions ({pagination.total})</h3>
 
           {highlightedId && (
             <div
@@ -342,7 +364,7 @@ export default function TransactionList() {
             <input
               type="text"
               className="input"
-              placeholder="Search transactions…"
+              placeholder="Search current page…"
               value={searchQuery}
               onChange={(e) => {
                 const value = e.target.value;
@@ -421,7 +443,11 @@ export default function TransactionList() {
                   fontSize: 12,
                   textTransform: "capitalize",
                 }}
-                onClick={() => setTypeFilter(t)}
+                onClick={() => {
+                  setTypeFilter(t);
+                  setPage(1);
+                  setSelectedIds([]);
+                }}
               >
                 {t === "all" ? "All" : t === "expense" ? "Expenses" : "Income"}
               </button>
@@ -524,7 +550,10 @@ export default function TransactionList() {
               DESKTOP TABLE
           ============================================= */}
 
-          <div className="desktop-transactions-table">
+          <div
+            className="desktop-transactions-table"
+            style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}
+          >
             <div
               style={{
                 overflowX: "auto",
@@ -734,7 +763,10 @@ export default function TransactionList() {
               MOBILE TRANSACTION CARDS
           ============================================= */}
 
-          <div className="mobile-transactions-list">
+          <div
+            className="mobile-transactions-list"
+            style={{ opacity: loading ? 0.6 : 1, transition: "opacity 0.2s" }}
+          >
             {/* Mobile select all */}
             <div
               style={{
@@ -956,6 +988,115 @@ export default function TransactionList() {
             })}
           </div>
         </>
+      )}
+
+      {/* ================================================
+          PAGINATION FOOTER
+      ================================================= */}
+
+      {pagination.total > 0 && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+            marginTop: 18,
+            paddingTop: 14,
+            borderTop: "1px solid var(--color-line)",
+            fontSize: 13,
+            color: "var(--color-ink-muted)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span>
+              Showing{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                {rangeStart}–{rangeEnd}
+              </strong>{" "}
+              of{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                {pagination.total}
+              </strong>
+            </span>
+
+            <select
+              aria-label="Rows per page"
+              className="input"
+              value={pagination.limit}
+              onChange={(e) => {
+                setPageLimit(Number(e.target.value));
+                setSelectedIds([]);
+              }}
+              style={{
+                width: "auto",
+                height: 32,
+                padding: "0 8px",
+                fontSize: 12,
+              }}
+            >
+              {[10, 25, 50, 100].map((size) => (
+                <option key={size} value={size}>
+                  {size} / page
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={pagination.page <= 1 || loading}
+              onClick={() => {
+                setPage(pagination.page - 1);
+                setSelectedIds([]);
+              }}
+              style={{
+                padding: "6px 10px",
+                fontSize: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <ChevronLeft size={15} />
+              Previous
+            </button>
+
+            <span style={{ fontSize: 12, padding: "0 4px" }}>
+              Page{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                {pagination.page}
+              </strong>{" "}
+              of{" "}
+              <strong style={{ color: "var(--color-ink)" }}>
+                {pagination.pages}
+              </strong>
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={pagination.page >= pagination.pages || loading}
+              onClick={() => {
+                setPage(pagination.page + 1);
+                setSelectedIds([]);
+              }}
+              style={{
+                padding: "6px 10px",
+                fontSize: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              Next
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ================================================

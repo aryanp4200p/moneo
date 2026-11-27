@@ -6,6 +6,19 @@ export const useTransactionStore = create((set, get) => ({
   pending: [],
 
   // =========================================================
+  // PAGINATION STATE
+  // =========================================================
+
+  paginatedTransactions: [],
+  pagination: {
+    page: 1,
+    limit: 25,
+    total: 0,
+    pages: 1,
+  },
+  paginatedLoading: false,
+
+  // =========================================================
   // RECURRING TRANSACTIONS
   // =========================================================
 
@@ -19,10 +32,12 @@ export const useTransactionStore = create((set, get) => ({
   filters: {
     start_date: "",
     end_date: "",
+    category: "",
+    type: "",
   },
 
   // =========================================================
-  // FILTERS
+  // FILTERS & PAGINATION CONTROLS
   // =========================================================
 
   setFilters: (filters) =>
@@ -31,18 +46,97 @@ export const useTransactionStore = create((set, get) => ({
         ...state.filters,
         ...filters,
       },
+      pagination: {
+        ...state.pagination,
+        page: 1, // Reset to page 1 whenever filters change
+      },
     })),
 
   clearFilters: () =>
-    set({
+    set((state) => ({
       filters: {
         start_date: "",
         end_date: "",
+        category: "",
+        type: "",
       },
-    }),
+      pagination: {
+        ...state.pagination,
+        page: 1,
+      },
+    })),
+
+  setPage: (page) =>
+    set((state) => ({
+      pagination: {
+        ...state.pagination,
+        page: Math.max(1, Math.min(page, state.pagination.pages || 1)),
+      },
+    })),
+
+  setPageLimit: (limit) =>
+    set((state) => ({
+      pagination: {
+        ...state.pagination,
+        limit,
+        page: 1,
+      },
+    })),
 
   // =========================================================
-  // FETCH TRANSACTIONS
+  // FETCH PAGINATED TRANSACTIONS (FOR TRANSACTION LIST TABLE)
+  // =========================================================
+
+  fetchPaginatedTransactions: async (overrides = {}) => {
+    set({
+      paginatedLoading: true,
+      error: null,
+    });
+
+    try {
+      const currentPagination = get().pagination;
+      const finalFilters = overrides.filters ?? get().filters;
+      const page = overrides.page ?? currentPagination.page;
+      const limit = overrides.limit ?? currentPagination.limit;
+
+      const cleanFilters = Object.fromEntries(
+        Object.entries(finalFilters).filter(
+          ([, value]) => value !== "" && value != null,
+        ),
+      );
+
+      const { data } = await api.get("/transactions/paginated", {
+        params: {
+          ...cleanFilters,
+          page,
+          limit,
+        },
+      });
+
+      set({
+        paginatedTransactions: data.items || [],
+        pagination: {
+          page: data.page,
+          limit: data.limit,
+          total: data.total,
+          pages: data.pages,
+        },
+        paginatedLoading: false,
+      });
+
+      return data;
+    } catch (err) {
+      set({
+        error: "Could not load transactions",
+        paginatedLoading: false,
+      });
+
+      throw err;
+    }
+  },
+
+  // =========================================================
+  // FETCH TRANSACTIONS (BACKWARD-COMPATIBLE FOR CHARTS/DASHBOARD)
   // =========================================================
 
   fetchTransactions: async (filters = null) => {
@@ -124,6 +218,9 @@ export const useTransactionStore = create((set, get) => ({
       ],
     }));
 
+    // Refresh current page metadata
+    await get().fetchPaginatedTransactions({ page: 1 });
+
     return data;
   },
 
@@ -199,6 +296,8 @@ export const useTransactionStore = create((set, get) => ({
       };
     });
 
+    await get().fetchPaginatedTransactions({ page: 1 });
+
     return data;
   },
 
@@ -224,6 +323,8 @@ export const useTransactionStore = create((set, get) => ({
       });
     }
 
+    await get().fetchPaginatedTransactions({ page: 1 });
+
     return data;
   },
 
@@ -245,6 +346,10 @@ export const useTransactionStore = create((set, get) => ({
           )
         : [data, ...state.transactions],
 
+      paginatedTransactions: state.paginatedTransactions.map((transaction) =>
+        String(transaction.id) === String(id) ? data : transaction,
+      ),
+
       pending: state.pending.filter(
         (transaction) => String(transaction.id) !== String(id),
       ),
@@ -262,6 +367,10 @@ export const useTransactionStore = create((set, get) => ({
 
     set({
       transactions: get().transactions.map((transaction) =>
+        transaction.id === id ? data : transaction,
+      ),
+
+      paginatedTransactions: get().paginatedTransactions.map((transaction) =>
         transaction.id === id ? data : transaction,
       ),
 
@@ -285,8 +394,14 @@ export const useTransactionStore = create((set, get) => ({
         (transaction) => transaction.id !== id,
       ),
 
+      paginatedTransactions: get().paginatedTransactions.filter(
+        (transaction) => transaction.id !== id,
+      ),
+
       pending: get().pending.filter((transaction) => transaction.id !== id),
     });
+
+    await get().fetchPaginatedTransactions();
   },
 
   // =========================================================
@@ -300,10 +415,6 @@ export const useTransactionStore = create((set, get) => ({
     });
 
     try {
-      /*
-- First process any recurring transactions
-- whose due date has arrived.
-       */
       await api.post("/recurring-transactions/process-due");
 
       const { data } = await api.get("/recurring-transactions", {
@@ -317,12 +428,8 @@ export const useTransactionStore = create((set, get) => ({
         recurringLoading: false,
       });
 
-      /*
-- Refresh normal transactions so any
-- automatically generated recurring
-- transactions appear immediately.
-       */
       await get().fetchTransactions();
+      await get().fetchPaginatedTransactions();
 
       return data;
     } catch (err) {
@@ -354,11 +461,8 @@ export const useTransactionStore = create((set, get) => ({
         recurringLoading: false,
       });
 
-      /*
-- Refresh both recurring and normal
-- transactions after processing.
-       */
       await get().fetchTransactions();
+      await get().fetchPaginatedTransactions();
 
       return data;
     } catch (err) {

@@ -134,6 +134,18 @@ class TransactionOut(BaseModel):
 
 
 # =========================================================
+# PAGINATED TRANSACTIONS RESPONSE
+# =========================================================
+
+class PaginatedTransactions(BaseModel):
+    items: list[TransactionOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+# =========================================================
 # CSV IMPORT ERROR
 # =========================================================
 

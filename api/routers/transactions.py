@@ -1,4 +1,5 @@
 from datetime import date
+import math
 from typing import Optional
 
 from fastapi import (
@@ -6,6 +7,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -20,6 +22,7 @@ from schemas.transaction import (
     CSVImportResult,
     CSVPreviewResult,
     CSVPreviewTransaction,
+    PaginatedTransactions,
     TransactionCategorize,
     TransactionCreate,
     TransactionOut,
@@ -34,6 +37,31 @@ router = APIRouter(
 )
 
 ALLOWED_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _build_transaction_query(
+    db: Session,
+    user_id: int,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    category: Optional[str] = None,
+    type: Optional[str] = None,
+):
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
+
+    if start_date:
+        query = query.filter(Transaction.date >= start_date)
+
+    if end_date:
+        query = query.filter(Transaction.date <= end_date)
+
+    if category:
+        query = query.filter(Transaction.category == category)
+
+    if type:
+        query = query.filter(Transaction.type == type)
+
+    return query
 
 
 # =========================================================
@@ -71,7 +99,56 @@ def create_transaction(
 
 
 # =========================================================
-# LIST TRANSACTIONS
+# LIST TRANSACTIONS (PAGINATED WITH METADATA)
+# =========================================================
+
+@router.get(
+    "/paginated",
+    response_model=PaginatedTransactions,
+)
+def list_transactions_paginated(
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(25, ge=1, le=200, description="Items per page"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    category: Optional[str] = None,
+    type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return paginated transactions with total count and page metadata."""
+
+    query = _build_transaction_query(
+        db=db,
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        category=category,
+        type=type,
+    )
+
+    total = query.count()
+    pages = max(1, math.ceil(total / limit)) if total > 0 else 1
+    offset = (page - 1) * limit
+
+    items = (
+        query.order_by(Transaction.date.desc(), Transaction.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return PaginatedTransactions(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+    )
+
+
+# =========================================================
+# LIST TRANSACTIONS (BACKWARD-COMPATIBLE + LIMIT/OFFSET)
 # =========================================================
 
 @router.get(
@@ -83,28 +160,28 @@ def list_transactions(
     end_date: Optional[date] = None,
     category: Optional[str] = None,
     type: Optional[str] = None,
+    limit: int = Query(500, ge=1, le=2000, description="Max rows returned"),
+    offset: int = Query(0, ge=0, description="Rows to skip"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return the current user's transactions with optional filters."""
+    """Return the current user's transactions with optional filters and limit/offset."""
 
-    query = db.query(Transaction).filter(
-        Transaction.user_id == current_user.id
+    query = _build_transaction_query(
+        db=db,
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        category=category,
+        type=type,
     )
 
-    if start_date:
-        query = query.filter(Transaction.date >= start_date)
-
-    if end_date:
-        query = query.filter(Transaction.date <= end_date)
-
-    if category:
-        query = query.filter(Transaction.category == category)
-
-    if type:
-        query = query.filter(Transaction.type == type)
-
-    return query.order_by(Transaction.date.desc()).all()
+    return (
+        query.order_by(Transaction.date.desc(), Transaction.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 # =========================================================
@@ -168,10 +245,6 @@ async def preview_csv(
             detail="Uploaded file is empty.",
         )
 
-    # -----------------------------------------------------
-    # Parse CSV or Passbook Image
-    # -----------------------------------------------------
-
     if is_csv:
         parsed_rows, errors = parse_csv(raw_bytes)
     else:
@@ -180,10 +253,6 @@ async def preview_csv(
     preview_transactions = []
     duplicates = []
 
-    # -----------------------------------------------------
-    # Process each parsed row
-    # -----------------------------------------------------
-
     for index, row in enumerate(parsed_rows, start=2):
         particulars = getattr(row, "particulars", None) or row.merchant or row.note
         cheque_no = getattr(row, "cheque_no", None)
@@ -191,7 +260,6 @@ async def preview_csv(
         credit = getattr(row, "credit", None) or (row.amount if row.type == "income" else 0.0)
         balance = getattr(row, "balance", None)
 
-        # Duplicate check
         query = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
             Transaction.date == row.date,
@@ -216,7 +284,6 @@ async def preview_csv(
             )
             continue
 
-        # Automatic category using particulars + merchant + note
         category = auto_categorize(
             merchant=row.merchant,
             note=row.note,
@@ -282,12 +349,10 @@ def import_csv(
         particulars = getattr(row, "particulars", None) or row.merchant or row.note
         cheque_no = getattr(row, "cheque_no", None)
 
-        # Include cheque_no in note if present and not already included
         final_note = row.note or particulars
         if cheque_no and cheque_no != "-" and final_note and cheque_no not in final_note:
             final_note = f"{final_note} (Chq/Ref: {cheque_no})"
 
-        # Duplicate check
         query = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
             Transaction.date == row.date,
@@ -314,7 +379,6 @@ def import_csv(
             )
             continue
 
-        # Re-run categorization (user may have edited particulars in preview table)
         category = auto_categorize(
             merchant=row.merchant,
             note=final_note,
