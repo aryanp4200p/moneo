@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  BadgeCheck,
   CalendarDays,
-  CheckCircle2,
   Clock3,
   Pencil,
   Pause,
@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useAuthStore } from "../store/authStore";
 import { useTransactionStore } from "../store/transactionStore";
 
 const initialForm = {
@@ -96,6 +97,7 @@ function money(value) {
 }
 
 export default function BillsRecurringPage() {
+  const user = useAuthStore((s) => s.user);
   const {
     recurringTransactions,
     recurringLoading,
@@ -107,6 +109,49 @@ export default function BillsRecurringPage() {
     deleteRecurringTransaction,
     clearRecurringError,
   } = useTransactionStore();
+
+  const paidBillsStorageKey = `fm_paid_bills_${user?.id || "guest"}`;
+  const [paidBillKeys, setPaidBillKeys] = useState(() => {
+    try {
+      const saved = localStorage.getItem(paidBillsStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const syncPaid = () => {
+      try {
+        const saved = localStorage.getItem(paidBillsStorageKey);
+        setPaidBillKeys(saved ? JSON.parse(saved) : []);
+      } catch {
+        setPaidBillKeys([]);
+      }
+    };
+
+    syncPaid();
+    window.addEventListener("moneo:bills-updated", syncPaid);
+    return () => window.removeEventListener("moneo:bills-updated", syncPaid);
+  }, [paidBillsStorageKey]);
+
+  const paidBillSet = useMemo(() => new Set(paidBillKeys), [paidBillKeys]);
+
+  const toggleBillPaid = (item) => {
+    if (!item?.next_due_date) return;
+    const cycleKey = `${item.id}:${item.next_due_date}`;
+    const next = paidBillSet.has(cycleKey)
+      ? paidBillKeys.filter((k) => k !== cycleKey)
+      : [...paidBillKeys, cycleKey];
+
+    setPaidBillKeys(next);
+    try {
+      localStorage.setItem(paidBillsStorageKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage errors
+    }
+    window.dispatchEvent(new Event("moneo:bills-updated"));
+  };
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -575,8 +620,11 @@ export default function BillsRecurringPage() {
         >
           {visible.map((item) => {
             const expense = item.type === "expense";
-
             const busy = actionId === item.id;
+            const isPaidThisCycle = Boolean(
+              item.next_due_date &&
+              paidBillSet.has(`${item.id}:${item.next_due_date}`),
+            );
 
             return (
               <div
@@ -717,11 +765,45 @@ export default function BillsRecurringPage() {
                   )}
                 </div>
 
+                {item.is_active && (
+                  <button
+                    type="button"
+                    onClick={() => toggleBillPaid(item)}
+                    disabled={busy}
+                    title="Stop due-date notifications for this payment cycle"
+                    style={{
+                      width: "100%",
+                      minHeight: 38,
+                      marginTop: 17,
+                      border: isPaidThisCycle
+                        ? "1px solid rgba(22, 163, 74, 0.35)"
+                        : "1px solid var(--color-border, #d1d5db)",
+                      borderRadius: 9,
+                      background: isPaidThisCycle
+                        ? "rgba(22, 163, 74, 0.10)"
+                        : "transparent",
+                      color: isPaidThisCycle
+                        ? "#16a34a"
+                        : "var(--color-ink, #374151)",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <BadgeCheck size={15} />
+                    {isPaidThisCycle ? "Paid (Alerts Stopped)" : "Mark as Paid"}
+                  </button>
+                )}
+
                 <div
                   style={{
                     display: "flex",
                     gap: 8,
-                    marginTop: 17,
+                    marginTop: item.is_active ? 8 : 17,
                   }}
                 >
                   <ActionButton

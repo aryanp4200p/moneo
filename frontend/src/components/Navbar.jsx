@@ -17,9 +17,9 @@ import {
   Check,
   CheckCheck,
   ArrowRight,
+  BadgeCheck,
 } from "lucide-react";
 
-import api from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import { useTransactionStore } from "../store/transactionStore";
 import { useBudgetStore } from "../store/budgetStore";
@@ -27,14 +27,34 @@ import ThemeToggle from "./ThemeToggle";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+const GOAL_ALERT_DAYS = new Set([15, 13, 11, 9, 7, 5, 4, 3, 2, 1, 0]);
+const BILL_ALERT_DAYS = new Set([7, 3, 2, 1, 0]);
+
+function getDaysUntil(dateStr) {
+  if (!dateStr) return null;
+  const clean = String(dateStr).slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+  if (!y || !m || !d) return null;
+
+  const target = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
 export default function Navbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
   const transactions = useTransactionStore((s) => s.transactions);
-  const pendingTransactions = useTransactionStore((s) => s.pending);
+  const recurringTransactions = useTransactionStore(
+    (s) => s.recurringTransactions,
+  );
   const fetchTransactions = useTransactionStore((s) => s.fetchTransactions);
-  const fetchPending = useTransactionStore((s) => s.fetchPending);
+  const fetchRecurringTransactions = useTransactionStore(
+    (s) => s.fetchRecurringTransactions,
+  );
 
   const budgetProgress = useBudgetStore((s) => s.progress);
   const fetchProgress = useBudgetStore((s) => s.fetchProgress);
@@ -49,10 +69,12 @@ export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [wealthSummary, setWealthSummary] = useState(null);
 
-  // Persisted read notification IDs per user
-  const readStorageKey = `fm_read_notifications_${user?.id || "guest"}`;
+  const userKey = user?.id || "guest";
+  const readStorageKey = `fm_read_notifications_${userKey}`;
+  const paidBillsStorageKey = `fm_paid_bills_${userKey}`;
+  const goalsStorageKey = `fm_goals_${userKey}`;
+
   const [readIds, setReadIds] = useState(() => {
     try {
       const saved = localStorage.getItem(readStorageKey);
@@ -62,8 +84,15 @@ export default function Navbar() {
     }
   });
 
-  // Track goals from localStorage (same key as GoalsPage.jsx)
-  const goalsStorageKey = `fm_goals_${user?.id || "guest"}`;
+  const [paidBillKeys, setPaidBillKeys] = useState(() => {
+    try {
+      const saved = localStorage.getItem(paidBillsStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [goals, setGoals] = useState(() => {
     try {
       const saved = localStorage.getItem(goalsStorageKey);
@@ -73,7 +102,7 @@ export default function Navbar() {
     }
   });
 
-  // Reload persisted read IDs & goals when user changes
+  // Sync persisted state when user switches
   useEffect(() => {
     try {
       const savedRead = localStorage.getItem(readStorageKey);
@@ -83,14 +112,21 @@ export default function Navbar() {
     }
 
     try {
+      const savedPaid = localStorage.getItem(paidBillsStorageKey);
+      setPaidBillKeys(savedPaid ? JSON.parse(savedPaid) : []);
+    } catch {
+      setPaidBillKeys([]);
+    }
+
+    try {
       const savedGoals = localStorage.getItem(goalsStorageKey);
       setGoals(savedGoals ? JSON.parse(savedGoals) : []);
     } catch {
       setGoals([]);
     }
-  }, [readStorageKey, goalsStorageKey]);
+  }, [readStorageKey, paidBillsStorageKey, goalsStorageKey]);
 
-  // Listen for live goal updates (same tab + cross-tab)
+  // Listen for live updates from GoalsPage and BillsRecurringPage
   useEffect(() => {
     const syncGoals = () => {
       try {
@@ -101,39 +137,36 @@ export default function Navbar() {
       }
     };
 
+    const syncPaidBills = () => {
+      try {
+        const saved = localStorage.getItem(paidBillsStorageKey);
+        setPaidBillKeys(saved ? JSON.parse(saved) : []);
+      } catch {
+        setPaidBillKeys([]);
+      }
+    };
+
     window.addEventListener("moneo:goals-updated", syncGoals);
-    window.addEventListener("storage", syncGoals);
+    window.addEventListener("moneo:bills-updated", syncPaidBills);
+    window.addEventListener("storage", () => {
+      syncGoals();
+      syncPaidBills();
+    });
 
     return () => {
       window.removeEventListener("moneo:goals-updated", syncGoals);
-      window.removeEventListener("storage", syncGoals);
+      window.removeEventListener("moneo:bills-updated", syncPaidBills);
     };
-  }, [goalsStorageKey]);
+  }, [goalsStorageKey, paidBillsStorageKey]);
 
-  // Fetch transactions, pending items, and budget progress for live alerts
+  // Fetch data needed for search, budgets, and bills alerts
   useEffect(() => {
     if (user) {
       fetchTransactions().catch(() => {});
-      fetchPending().catch(() => {});
       fetchProgress().catch(() => {});
+      fetchRecurringTransactions(false).catch(() => {});
     }
-  }, [user, fetchTransactions, fetchPending, fetchProgress]);
-
-  // Fetch wealth summary & listen for live updates from WealthPage
-  useEffect(() => {
-    if (!user) return;
-
-    const loadWealth = () => {
-      api
-        .get("/wealth")
-        .then((res) => setWealthSummary(res.data))
-        .catch(() => {});
-    };
-
-    loadWealth();
-    window.addEventListener("moneo:wealth-updated", loadWealth);
-    return () => window.removeEventListener("moneo:wealth-updated", loadWealth);
-  }, [user]);
+  }, [user, fetchTransactions, fetchProgress, fetchRecurringTransactions]);
 
   const handleLogout = () => {
     setMobileMenuOpen(false);
@@ -316,17 +349,24 @@ export default function Navbar() {
   };
 
   /* ---------------------------------------------------------
-     DYNAMIC NOTIFICATIONS (TRANSACTIONS, BUDGETS, GOALS & WEALTH)
+     FOCUSED NOTIFICATIONS:
+     1. Goals: Achieved OR Deadline on days [15, 13, 11, 9, 7, 5, 4, 3, 2, 1, 0]
+     2. Budgets: Exceeded (>100%) or Approaching (>=80%), max 2 alerts
+     3. Bills & Recurring: Due on days [7, 3, 2, 1, 0] or overdue, stops when marked Paid
      --------------------------------------------------------- */
+
+  const paidBillSet = useMemo(() => new Set(paidBillKeys), [paidBillKeys]);
 
   const notificationItems = useMemo(() => {
     const items = [];
 
-    // 1. Achieved Goals
+    // 1. Goals (Achieved + Exact Countdown Cadence)
     goals.forEach((goal) => {
       const target = Number(goal.target || 0);
       const saved = Number(goal.saved || 0);
-      if (target > 0 && saved >= target) {
+      const isCompleted = target > 0 && saved >= target;
+
+      if (isCompleted) {
         items.push({
           id: `goal-achieved-${goal.id}`,
           kind: "goal",
@@ -334,10 +374,34 @@ export default function Navbar() {
           message: `You reached your ₹${target.toLocaleString("en-IN")} savings target!`,
           path: "/goals",
         });
+        return;
+      }
+
+      const daysLeft = getDaysUntil(goal.deadline);
+      if (daysLeft !== null && GOAL_ALERT_DAYS.has(daysLeft)) {
+        const remaining = Math.max(target - saved, 0);
+        const dayText =
+          daysLeft === 0
+            ? "Deadline is today"
+            : daysLeft === 1
+              ? "1 day left"
+              : `${daysLeft} days left`;
+
+        items.push({
+          id: `goal-deadline-${goal.id}-d${daysLeft}`,
+          kind: daysLeft <= 4 ? "budget-warn" : "goal",
+          title: `Goal deadline: ${goal.name} (${dayText})`,
+          message:
+            remaining > 0
+              ? `₹${remaining.toLocaleString("en-IN")} remaining to hit your target.`
+              : "Target deadline is approaching.",
+          path: "/goals",
+        });
       }
     });
 
-    // 2. Budget Exceeded or Approaching Limit (>= 80%)
+    // 2. Budgets (Approaching >=80% or Exceeded >100%, capped at top 2)
+    const budgetAlerts = [];
     budgetProgress.forEach((item) => {
       const limit = Number(item.monthly_limit ?? item.limit ?? 0);
       const spent = Number(item.spent ?? item.actual_spent ?? 0);
@@ -348,81 +412,67 @@ export default function Navbar() {
       const budgetKey = item.budget_id || item.id || categoryName;
 
       if (spent > limit) {
-        items.push({
-          id: `budget-exceeded-${budgetKey}-${pct}`,
+        budgetAlerts.push({
+          id: `budget-exceeded-${budgetKey}`,
           kind: "budget-danger",
+          severity: 2,
+          pct,
           title: `Budget exceeded: ${categoryName}`,
           message: `Spent ₹${spent.toLocaleString("en-IN")} of ₹${limit.toLocaleString("en-IN")} (${pct}%).`,
           path: "/budgets",
         });
       } else if (pct >= 80) {
-        items.push({
-          id: `budget-warning-${budgetKey}-${pct}`,
+        budgetAlerts.push({
+          id: `budget-warning-${budgetKey}`,
           kind: "budget-warn",
+          severity: 1,
+          pct,
           title: `Budget alert: ${categoryName} at ${pct}%`,
-          message: `₹${Math.max(limit - spent, 0).toLocaleString("en-IN")} remaining out of ₹${limit.toLocaleString("en-IN")}.`,
+          message: `₹${Math.max(limit - spent, 0).toLocaleString("en-IN")} left of ₹${limit.toLocaleString("en-IN")}.`,
           path: "/budgets",
         });
       }
     });
 
-    // 3. Latest Transaction Added
-    if (transactions.length > 0) {
-      const latest = [...transactions].sort((a, b) => {
-        const dateCmp = String(b.date || "").localeCompare(
-          String(a.date || ""),
-        );
-        if (dateCmp !== 0) return dateCmp;
-        return Number(b.id || 0) - Number(a.id || 0);
-      })[0];
+    budgetAlerts
+      .sort((a, b) => b.severity - a.severity || b.pct - a.pct)
+      .slice(0, 2)
+      .forEach(({ severity, pct, ...alert }) => items.push(alert));
 
-      if (latest) {
-        const label =
-          latest.merchant || latest.note || latest.category || "Transaction";
-        const sign = latest.type === "income" ? "+" : "-";
-        const amountText =
-          latest.amount != null
-            ? ` (${sign}₹${Number(latest.amount).toLocaleString("en-IN")})`
-            : "";
+    // 3. Bills & Recurring (Days 7, 3, 2, 1, 0 or overdue; hidden once Marked Paid)
+    recurringTransactions.forEach((bill) => {
+      if (!bill.is_active || !bill.next_due_date) return;
 
-        items.push({
-          id: `txn-${latest.id}`,
-          kind: "transaction",
-          title: "New transaction added",
-          message: `${label}${amountText} recorded.`,
-          path: "/transactions",
-        });
-      }
-    }
+      const billCycleKey = `${bill.id}:${bill.next_due_date}`;
+      if (paidBillSet.has(billCycleKey)) return;
 
-    // 4. Pending Categorization Alert
-    if (pendingTransactions.length > 0) {
+      const daysLeft = getDaysUntil(bill.next_due_date);
+      if (daysLeft === null) return;
+
+      const isOverdue = daysLeft < 0;
+      if (!isOverdue && !BILL_ALERT_DAYS.has(daysLeft)) return;
+
+      const amountText = `₹${Number(bill.amount || 0).toLocaleString("en-IN")}`;
+      const dueLabel = isOverdue
+        ? `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`
+        : daysLeft === 0
+          ? "Due today"
+          : daysLeft === 1
+            ? "Due tomorrow (1 day left)"
+            : `Due in ${daysLeft} days`;
+
       items.push({
-        id: `pending-txns-${pendingTransactions.length}`,
-        kind: "transaction",
-        title: "Uncategorized transactions",
-        message: `${pendingTransactions.length} transaction${
-          pendingTransactions.length === 1 ? "" : "s"
-        } need a category.`,
-        path: "/transactions",
+        id: `bill-due-${bill.id}-${bill.next_due_date}-d${daysLeft}`,
+        kind: isOverdue || daysLeft <= 1 ? "budget-danger" : "budget-warn",
+        title: `${bill.type === "income" ? "Expected recurring" : "Bill due"}: ${bill.title}`,
+        message: `${amountText} • ${dueLabel}.`,
+        path: "/bills",
+        billCycleKey,
       });
-    }
+    });
 
-    // 5. Net Worth Milestone (every ₹1,00,000 crossed)
-    const netWorth = Number(wealthSummary?.net_worth || 0);
-    if (netWorth >= 100000) {
-      const lakhMilestone = Math.floor(netWorth / 100000);
-      items.push({
-        id: `wealth-milestone-${lakhMilestone}L`,
-        kind: "goal",
-        title: `Net worth milestone: ₹${lakhMilestone}L+`,
-        message: `Your net worth reached ₹${netWorth.toLocaleString("en-IN")}.`,
-        path: "/wealth",
-      });
-    }
-
-    return items.slice(0, 8);
-  }, [transactions, pendingTransactions, budgetProgress, goals, wealthSummary]);
+    return items.slice(0, 7);
+  }, [goals, budgetProgress, recurringTransactions, paidBillSet]);
 
   const readIdSet = useMemo(() => new Set(readIds), [readIds]);
 
@@ -434,7 +484,7 @@ export default function Navbar() {
   const hasUnreadNotifications = unreadCount > 0;
 
   const persistReadIds = (nextIds) => {
-    const trimmed = Array.from(new Set(nextIds)).slice(-100);
+    const trimmed = Array.from(new Set(nextIds)).slice(-120);
     setReadIds(trimmed);
     try {
       localStorage.setItem(readStorageKey, JSON.stringify(trimmed));
@@ -449,6 +499,20 @@ export default function Navbar() {
     persistReadIds([...readIds, ...notificationItems.map((item) => item.id)]);
   };
 
+  const handleMarkBillPaid = (event, billCycleKey) => {
+    event.stopPropagation();
+    const next = Array.from(new Set([...paidBillKeys, billCycleKey])).slice(
+      -120,
+    );
+    setPaidBillKeys(next);
+    try {
+      localStorage.setItem(paidBillsStorageKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage errors
+    }
+    window.dispatchEvent(new Event("moneo:bills-updated"));
+  };
+
   const handleNotificationClick = (item) => {
     if (!readIdSet.has(item.id)) {
       persistReadIds([...readIds, item.id]);
@@ -459,7 +523,6 @@ export default function Navbar() {
     }
   };
 
-  // Opening the bell shows the list WITHOUT automatically marking everything read
   const toggleNotifications = () => {
     setNotificationsOpen((open) => !open);
     setSearchOpen(false);
@@ -862,7 +925,7 @@ export default function Navbar() {
                   position: "absolute",
                   top: 48,
                   right: 0,
-                  width: 340,
+                  width: 355,
                   maxWidth: "calc(100vw - 30px)",
                   background: "var(--color-surface)",
                   border: "1px solid var(--color-line)",
@@ -940,7 +1003,7 @@ export default function Navbar() {
                 {notificationItems.length === 0 ? (
                   <div
                     style={{
-                      padding: "22px 16px",
+                      padding: "24px 16px",
                       textAlign: "center",
                     }}
                   >
@@ -955,11 +1018,12 @@ export default function Navbar() {
                         fontSize: 12,
                       }}
                     >
-                      No new finance notifications right now.
+                      No upcoming bills, budget alerts, or goal deadlines right
+                      now.
                     </span>
                   </div>
                 ) : (
-                  <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                  <div style={{ maxHeight: 340, overflowY: "auto" }}>
                     {notificationItems.map((item) => {
                       const isRead = readIdSet.has(item.id);
 
@@ -971,14 +1035,20 @@ export default function Navbar() {
                             : "var(--color-accent)";
 
                       return (
-                        <button
+                        <div
                           key={item.id}
-                          type="button"
                           onClick={() => handleNotificationClick(item)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              handleNotificationClick(item);
+                            }
+                          }}
                           style={{
                             width: "100%",
+                            boxSizing: "border-box",
                             textAlign: "left",
-                            border: 0,
                             borderBottom: "1px solid var(--color-line)",
                             padding: "13px 16px",
                             background: isRead
@@ -990,7 +1060,7 @@ export default function Navbar() {
                             gap: 10,
                             transition:
                               "background 0.2s ease, opacity 0.2s ease",
-                            opacity: isRead ? 0.78 : 1,
+                            opacity: isRead ? 0.8 : 1,
                           }}
                         >
                           <span
@@ -1051,33 +1121,86 @@ export default function Navbar() {
                             >
                               {item.message}
                             </span>
+
+                            {item.billCycleKey && (
+                              <button
+                                type="button"
+                                onClick={(e) =>
+                                  handleMarkBillPaid(e, item.billCycleKey)
+                                }
+                                style={{
+                                  marginTop: 8,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  padding: "4px 10px",
+                                  borderRadius: 7,
+                                  border: "1px solid rgba(16, 185, 129, 0.35)",
+                                  background: "rgba(16, 185, 129, 0.10)",
+                                  color: "#10B981",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <BadgeCheck size={13} />
+                                Mark as Paid (stop alerts)
+                              </button>
+                            )}
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNotificationsOpen(false);
-                    navigate("/transactions");
-                  }}
+                <div
                   style={{
-                    width: "100%",
-                    border: 0,
-                    background: "transparent",
-                    color: "var(--color-accent)",
-                    padding: "12px 16px",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "11px 16px",
+                    gap: 8,
                   }}
                 >
-                  View transactions →
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      navigate("/bills");
+                    }}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      color: "var(--color-accent)",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Bills & Recurring →
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      navigate("/goals");
+                    }}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      color: "var(--color-ink-muted)",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Goals →
+                  </button>
+                </div>
               </div>
             )}
           </div>
