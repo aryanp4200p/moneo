@@ -29,6 +29,7 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const GOAL_ALERT_DAYS = new Set([15, 13, 11, 9, 7, 5, 4, 3, 2, 1, 0]);
 const BILL_ALERT_DAYS = new Set([7, 3, 2, 1, 0]);
+const READ_EXPIRY_MS = 12 * 60 * 60 * 1000; // Auto-clear read alerts after 12 hours
 
 function getDaysUntil(dateStr) {
   if (!dateStr) return null;
@@ -41,6 +42,26 @@ function getDaysUntil(dateStr) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function parseReadMap(raw) {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const now = Date.now();
+      return parsed.reduce((acc, id) => {
+        acc[id] = now;
+        return acc;
+      }, {});
+    }
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch {
+    // Ignore malformed storage
+  }
+  return {};
 }
 
 export default function Navbar() {
@@ -63,24 +84,25 @@ export default function Navbar() {
   const location = useLocation();
 
   const searchRef = useRef(null);
-  const notificationRef = useRef(null);
+  const desktopNotifRef = useRef(null);
+  const mobileNotifRef = useRef(null);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const userKey = user?.id || "guest";
   const readStorageKey = `fm_read_notifications_${userKey}`;
   const paidBillsStorageKey = `fm_paid_bills_${userKey}`;
   const goalsStorageKey = `fm_goals_${userKey}`;
 
-  const [readIds, setReadIds] = useState(() => {
+  const [readTimestamps, setReadTimestamps] = useState(() => {
     try {
-      const saved = localStorage.getItem(readStorageKey);
-      return saved ? JSON.parse(saved) : [];
+      return parseReadMap(localStorage.getItem(readStorageKey));
     } catch {
-      return [];
+      return {};
     }
   });
 
@@ -102,13 +124,20 @@ export default function Navbar() {
     }
   });
 
+  // Periodic tick every minute so 12h expired read notifications clear live
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Sync persisted state when user switches
   useEffect(() => {
     try {
-      const savedRead = localStorage.getItem(readStorageKey);
-      setReadIds(savedRead ? JSON.parse(savedRead) : []);
+      setReadTimestamps(parseReadMap(localStorage.getItem(readStorageKey)));
     } catch {
-      setReadIds([]);
+      setReadTimestamps({});
     }
 
     try {
@@ -353,11 +382,12 @@ export default function Navbar() {
      1. Goals: Achieved OR Deadline on days [15, 13, 11, 9, 7, 5, 4, 3, 2, 1, 0]
      2. Budgets: Exceeded (>100%) or Approaching (>=80%), max 2 alerts
      3. Bills & Recurring: Due on days [7, 3, 2, 1, 0] or overdue, stops when marked Paid
+     Auto-clears from list 12 hours after being marked read.
      --------------------------------------------------------- */
 
   const paidBillSet = useMemo(() => new Set(paidBillKeys), [paidBillKeys]);
 
-  const notificationItems = useMemo(() => {
+  const rawNotificationItems = useMemo(() => {
     const items = [];
 
     // 1. Goals (Achieved + Exact Countdown Cadence)
@@ -474,18 +504,28 @@ export default function Navbar() {
     return items.slice(0, 7);
   }, [goals, budgetProgress, recurringTransactions, paidBillSet]);
 
-  const readIdSet = useMemo(() => new Set(readIds), [readIds]);
+  // Filter out notifications that were marked read >= 12 hours ago
+  const notificationItems = useMemo(() => {
+    return rawNotificationItems.filter((item) => {
+      const readAt = readTimestamps[item.id];
+      if (!readAt) return true;
+      return nowMs - readAt < READ_EXPIRY_MS;
+    });
+  }, [rawNotificationItems, readTimestamps, nowMs]);
 
   const unreadCount = useMemo(
-    () => notificationItems.filter((item) => !readIdSet.has(item.id)).length,
-    [notificationItems, readIdSet],
+    () =>
+      notificationItems.filter((item) => !Boolean(readTimestamps[item.id]))
+        .length,
+    [notificationItems, readTimestamps],
   );
 
   const hasUnreadNotifications = unreadCount > 0;
 
-  const persistReadIds = (nextIds) => {
-    const trimmed = Array.from(new Set(nextIds)).slice(-120);
-    setReadIds(trimmed);
+  const persistReadMap = (nextMap) => {
+    const entries = Object.entries(nextMap).slice(-150);
+    const trimmed = Object.fromEntries(entries);
+    setReadTimestamps(trimmed);
     try {
       localStorage.setItem(readStorageKey, JSON.stringify(trimmed));
     } catch {
@@ -496,7 +536,15 @@ export default function Navbar() {
   const handleMarkAllRead = (event) => {
     event.stopPropagation();
     if (notificationItems.length === 0) return;
-    persistReadIds([...readIds, ...notificationItems.map((item) => item.id)]);
+    const timestamp = Date.now();
+    setNowMs(timestamp);
+    const nextMap = { ...readTimestamps };
+    notificationItems.forEach((item) => {
+      if (!nextMap[item.id]) {
+        nextMap[item.id] = timestamp;
+      }
+    });
+    persistReadMap(nextMap);
   };
 
   const handleMarkBillPaid = (event, billCycleKey) => {
@@ -514,18 +562,26 @@ export default function Navbar() {
   };
 
   const handleNotificationClick = (item) => {
-    if (!readIdSet.has(item.id)) {
-      persistReadIds([...readIds, item.id]);
+    if (!readTimestamps[item.id]) {
+      const timestamp = Date.now();
+      setNowMs(timestamp);
+      persistReadMap({
+        ...readTimestamps,
+        [item.id]: timestamp,
+      });
     }
     setNotificationsOpen(false);
+    setMobileMenuOpen(false);
     if (item.path) {
       navigate(item.path);
     }
   };
 
   const toggleNotifications = () => {
+    setNowMs(Date.now());
     setNotificationsOpen((open) => !open);
     setSearchOpen(false);
+    setMobileMenuOpen(false);
   };
 
   /* ---------------------------------------------------------
@@ -538,10 +594,13 @@ export default function Navbar() {
         setSearchOpen(false);
       }
 
-      if (
-        notificationRef.current &&
-        !notificationRef.current.contains(event.target)
-      ) {
+      const insideDesktopNotif =
+        desktopNotifRef.current &&
+        desktopNotifRef.current.contains(event.target);
+      const insideMobileNotif =
+        mobileNotifRef.current && mobileNotifRef.current.contains(event.target);
+
+      if (!insideDesktopNotif && !insideMobileNotif) {
         setNotificationsOpen(false);
       }
     };
@@ -552,6 +611,289 @@ export default function Navbar() {
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, []);
+
+  /* ---------------------------------------------------------
+     SHARED NOTIFICATIONS DROPDOWN PANEL
+     --------------------------------------------------------- */
+
+  const renderNotificationsDropdown = (isMobile = false) => (
+    <div
+      style={{
+        position: "absolute",
+        top: isMobile ? 46 : 48,
+        right: isMobile ? -44 : 0,
+        width: 355,
+        maxWidth: "calc(100vw - 24px)",
+        background: "var(--color-surface)",
+        border: "1px solid var(--color-line)",
+        borderRadius: 14,
+        boxShadow: "0 18px 45px rgba(0,0,0,.22)",
+        overflow: "hidden",
+        zIndex: 2500,
+      }}
+    >
+      <div
+        style={{
+          padding: "14px 16px",
+          borderBottom: "1px solid var(--color-line)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <strong>Notifications</strong>
+          {hasUnreadNotifications && (
+            <span
+              style={{
+                padding: "2px 7px",
+                borderRadius: 999,
+                background: "var(--color-accent-soft)",
+                color: "var(--color-accent)",
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              {unreadCount} new
+            </span>
+          )}
+        </div>
+
+        {notificationItems.length > 0 && (
+          <button
+            type="button"
+            onClick={handleMarkAllRead}
+            disabled={!hasUnreadNotifications}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              border: 0,
+              background: "transparent",
+              color: hasUnreadNotifications
+                ? "var(--color-accent)"
+                : "var(--color-ink-muted)",
+              cursor: hasUnreadNotifications ? "pointer" : "default",
+              fontSize: 11,
+              fontWeight: 600,
+              opacity: hasUnreadNotifications ? 1 : 0.75,
+            }}
+          >
+            {hasUnreadNotifications ? (
+              <>
+                <Check size={13} />
+                Mark read
+              </>
+            ) : (
+              <>
+                <CheckCheck size={13} />
+                All read
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      {notificationItems.length === 0 ? (
+        <div
+          style={{
+            padding: "24px 16px",
+            textAlign: "center",
+          }}
+        >
+          <strong style={{ display: "block", fontSize: 13 }}>
+            You're all caught up
+          </strong>
+          <span
+            style={{
+              display: "block",
+              marginTop: 4,
+              color: "var(--color-ink-muted)",
+              fontSize: 12,
+            }}
+          >
+            No upcoming bills, budget alerts, or goal deadlines right now.
+          </span>
+        </div>
+      ) : (
+        <div style={{ maxHeight: 340, overflowY: "auto" }}>
+          {notificationItems.map((item) => {
+            const isRead = Boolean(readTimestamps[item.id]);
+
+            const badgeColor =
+              item.kind === "budget-danger"
+                ? "var(--color-alert)"
+                : item.kind === "goal"
+                  ? "#10B981"
+                  : "var(--color-accent)";
+
+            return (
+              <div
+                key={item.id}
+                onClick={() => handleNotificationClick(item)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    handleNotificationClick(item);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  textAlign: "left",
+                  borderBottom: "1px solid var(--color-line)",
+                  padding: "13px 16px",
+                  background: isRead
+                    ? "transparent"
+                    : "var(--color-accent-soft)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  transition: "background 0.2s ease, opacity 0.2s ease",
+                  opacity: isRead ? 0.8 : 1,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    marginTop: 5,
+                    flexShrink: 0,
+                    background: isRead ? "transparent" : badgeColor,
+                    border: isRead ? "1px solid var(--color-line)" : "none",
+                  }}
+                />
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        display: "block",
+                        fontSize: 13,
+                        color: "var(--color-ink)",
+                        fontWeight: isRead ? 500 : 700,
+                      }}
+                    >
+                      {item.title}
+                    </strong>
+
+                    {isRead && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "var(--color-ink-muted)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Read
+                      </span>
+                    )}
+                  </div>
+
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: 4,
+                      color: "var(--color-ink-muted)",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {item.message}
+                  </span>
+
+                  {item.billCycleKey && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleMarkBillPaid(e, item.billCycleKey)}
+                      style={{
+                        marginTop: 8,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        padding: "4px 10px",
+                        borderRadius: 7,
+                        border: "1px solid rgba(16, 185, 129, 0.35)",
+                        background: "rgba(16, 185, 129, 0.10)",
+                        color: "#10B981",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <BadgeCheck size={13} />
+                      Mark as Paid (stop alerts)
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "11px 16px",
+          gap: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setNotificationsOpen(false);
+            setMobileMenuOpen(false);
+            navigate("/bills");
+          }}
+          style={{
+            border: 0,
+            background: "transparent",
+            color: "var(--color-accent)",
+            padding: 0,
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          Bills & Recurring →
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setNotificationsOpen(false);
+            setMobileMenuOpen(false);
+            navigate("/goals");
+          }}
+          style={{
+            border: 0,
+            background: "transparent",
+            color: "var(--color-ink-muted)",
+            padding: 0,
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          Goals →
+        </button>
+      </div>
+    </div>
+  );
 
   /* ---------------------------------------------------------
      PUBLIC PAGES
@@ -901,7 +1243,7 @@ export default function Navbar() {
         <div className="topbar-right">
           {/* NOTIFICATIONS */}
           <div
-            ref={notificationRef}
+            ref={desktopNotifRef}
             style={{
               position: "relative",
             }}
@@ -919,290 +1261,7 @@ export default function Navbar() {
               {hasUnreadNotifications && <span className="notification-dot" />}
             </button>
 
-            {notificationsOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 48,
-                  right: 0,
-                  width: 355,
-                  maxWidth: "calc(100vw - 30px)",
-                  background: "var(--color-surface)",
-                  border: "1px solid var(--color-line)",
-                  borderRadius: 14,
-                  boxShadow: "0 18px 45px rgba(0,0,0,.22)",
-                  overflow: "hidden",
-                  zIndex: 2500,
-                }}
-              >
-                <div
-                  style={{
-                    padding: "14px 16px",
-                    borderBottom: "1px solid var(--color-line)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <strong>Notifications</strong>
-                    {hasUnreadNotifications && (
-                      <span
-                        style={{
-                          padding: "2px 7px",
-                          borderRadius: 999,
-                          background: "var(--color-accent-soft)",
-                          color: "var(--color-accent)",
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {unreadCount} new
-                      </span>
-                    )}
-                  </div>
-
-                  {notificationItems.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleMarkAllRead}
-                      disabled={!hasUnreadNotifications}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        border: 0,
-                        background: "transparent",
-                        color: hasUnreadNotifications
-                          ? "var(--color-accent)"
-                          : "var(--color-ink-muted)",
-                        cursor: hasUnreadNotifications ? "pointer" : "default",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        opacity: hasUnreadNotifications ? 1 : 0.75,
-                      }}
-                    >
-                      {hasUnreadNotifications ? (
-                        <>
-                          <Check size={13} />
-                          Mark read
-                        </>
-                      ) : (
-                        <>
-                          <CheckCheck size={13} />
-                          All read
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-
-                {notificationItems.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "24px 16px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <strong style={{ display: "block", fontSize: 13 }}>
-                      You're all caught up
-                    </strong>
-                    <span
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        color: "var(--color-ink-muted)",
-                        fontSize: 12,
-                      }}
-                    >
-                      No upcoming bills, budget alerts, or goal deadlines right
-                      now.
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: 340, overflowY: "auto" }}>
-                    {notificationItems.map((item) => {
-                      const isRead = readIdSet.has(item.id);
-
-                      const badgeColor =
-                        item.kind === "budget-danger"
-                          ? "var(--color-alert)"
-                          : item.kind === "goal"
-                            ? "#10B981"
-                            : "var(--color-accent)";
-
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => handleNotificationClick(item)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              handleNotificationClick(item);
-                            }
-                          }}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            textAlign: "left",
-                            borderBottom: "1px solid var(--color-line)",
-                            padding: "13px 16px",
-                            background: isRead
-                              ? "transparent"
-                              : "var(--color-accent-soft)",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: 10,
-                            transition:
-                              "background 0.2s ease, opacity 0.2s ease",
-                            opacity: isRead ? 0.8 : 1,
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              marginTop: 5,
-                              flexShrink: 0,
-                              background: isRead ? "transparent" : badgeColor,
-                              border: isRead
-                                ? "1px solid var(--color-line)"
-                                : "none",
-                            }}
-                          />
-
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <strong
-                                style={{
-                                  display: "block",
-                                  fontSize: 13,
-                                  color: "var(--color-ink)",
-                                  fontWeight: isRead ? 500 : 700,
-                                }}
-                              >
-                                {item.title}
-                              </strong>
-
-                              {isRead && (
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    color: "var(--color-ink-muted)",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  Read
-                                </span>
-                              )}
-                            </div>
-
-                            <span
-                              style={{
-                                display: "block",
-                                marginTop: 4,
-                                color: "var(--color-ink-muted)",
-                                fontSize: 12,
-                                lineHeight: 1.45,
-                              }}
-                            >
-                              {item.message}
-                            </span>
-
-                            {item.billCycleKey && (
-                              <button
-                                type="button"
-                                onClick={(e) =>
-                                  handleMarkBillPaid(e, item.billCycleKey)
-                                }
-                                style={{
-                                  marginTop: 8,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 5,
-                                  padding: "4px 10px",
-                                  borderRadius: 7,
-                                  border: "1px solid rgba(16, 185, 129, 0.35)",
-                                  background: "rgba(16, 185, 129, 0.10)",
-                                  color: "#10B981",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <BadgeCheck size={13} />
-                                Mark as Paid (stop alerts)
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "11px 16px",
-                    gap: 8,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNotificationsOpen(false);
-                      navigate("/bills");
-                    }}
-                    style={{
-                      border: 0,
-                      background: "transparent",
-                      color: "var(--color-accent)",
-                      padding: 0,
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Bills & Recurring →
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNotificationsOpen(false);
-                      navigate("/goals");
-                    }}
-                    style={{
-                      border: 0,
-                      background: "transparent",
-                      color: "var(--color-ink-muted)",
-                      padding: 0,
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Goals →
-                  </button>
-                </div>
-              </div>
-            )}
+            {notificationsOpen && renderNotificationsDropdown(false)}
           </div>
 
           {/* PROFILE */}
@@ -1257,12 +1316,38 @@ export default function Navbar() {
         </Link>
 
         <div className="mobile-header-actions">
+          {/* MOBILE NOTIFICATIONS */}
+          <div
+            ref={mobileNotifRef}
+            style={{
+              position: "relative",
+            }}
+          >
+            <button
+              className="topbar-icon-button"
+              title="Notifications"
+              type="button"
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+              onClick={toggleNotifications}
+            >
+              <Bell size={19} />
+
+              {hasUnreadNotifications && <span className="notification-dot" />}
+            </button>
+
+            {notificationsOpen && renderNotificationsDropdown(true)}
+          </div>
+
           <ThemeToggle />
 
           <button
             className="mobile-menu-button"
             type="button"
-            onClick={() => setMobileMenuOpen((open) => !open)}
+            onClick={() => {
+              setMobileMenuOpen((open) => !open);
+              setNotificationsOpen(false);
+            }}
             aria-label="Toggle navigation"
           >
             {mobileMenuOpen ? <X size={21} /> : <Menu size={21} />}
