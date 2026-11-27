@@ -137,13 +137,12 @@ export default function BillsRecurringPage() {
 
   const paidBillSet = useMemo(() => new Set(paidBillKeys), [paidBillKeys]);
 
-  const toggleBillPaid = (item) => {
+  const markBillPaid = (item) => {
     if (!item?.next_due_date) return;
     const cycleKey = `${item.id}:${item.next_due_date}`;
-    const next = paidBillSet.has(cycleKey)
-      ? paidBillKeys.filter((k) => k !== cycleKey)
-      : [...paidBillKeys, cycleKey];
+    if (paidBillSet.has(cycleKey)) return;
 
+    const next = [...paidBillKeys, cycleKey];
     setPaidBillKeys(next);
     try {
       localStorage.setItem(paidBillsStorageKey, JSON.stringify(next));
@@ -313,6 +312,7 @@ export default function BillsRecurringPage() {
       closeModal();
 
       await fetchRecurringTransactions(showPaused);
+      window.dispatchEvent(new Event("moneo:bills-updated"));
     } catch (error) {
       setFormError(
         error.response?.data?.detail || "Unable to save. Please try again.",
@@ -329,6 +329,7 @@ export default function BillsRecurringPage() {
       await toggleRecurringTransaction(item.id);
 
       await fetchRecurringTransactions(showPaused);
+      window.dispatchEvent(new Event("moneo:bills-updated"));
     } catch {
       // Store handles the error.
     } finally {
@@ -347,6 +348,7 @@ export default function BillsRecurringPage() {
       setDeleteTarget(null);
 
       await fetchRecurringTransactions(showPaused);
+      window.dispatchEvent(new Event("moneo:bills-updated"));
     } catch {
       // Store handles the error.
     } finally {
@@ -768,9 +770,13 @@ export default function BillsRecurringPage() {
                 {item.is_active && (
                   <button
                     type="button"
-                    onClick={() => toggleBillPaid(item)}
-                    disabled={busy}
-                    title="Stop due-date notifications for this payment cycle"
+                    onClick={() => markBillPaid(item)}
+                    disabled={busy || isPaidThisCycle}
+                    title={
+                      isPaidThisCycle
+                        ? "Already marked as paid for this cycle"
+                        : "Stop due-date notifications for this payment cycle"
+                    }
                     style={{
                       width: "100%",
                       minHeight: 38,
@@ -785,7 +791,7 @@ export default function BillsRecurringPage() {
                       color: isPaidThisCycle
                         ? "#16a34a"
                         : "var(--color-ink, #374151)",
-                      cursor: "pointer",
+                      cursor: isPaidThisCycle ? "default" : "pointer",
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",

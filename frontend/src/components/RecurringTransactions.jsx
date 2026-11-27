@@ -137,13 +137,12 @@ export default function RecurringTransactions() {
 
   const paidBillSet = useMemo(() => new Set(paidBillKeys), [paidBillKeys]);
 
-  const toggleBillPaid = (item) => {
+  const markBillPaid = (item) => {
     if (!item?.next_due_date) return;
     const cycleKey = `${item.id}:${item.next_due_date}`;
-    const next = paidBillSet.has(cycleKey)
-      ? paidBillKeys.filter((k) => k !== cycleKey)
-      : [...paidBillKeys, cycleKey];
+    if (paidBillSet.has(cycleKey)) return;
 
+    const next = [...paidBillKeys, cycleKey];
     setPaidBillKeys(next);
     try {
       localStorage.setItem(paidBillsStorageKey, JSON.stringify(next));
@@ -1037,9 +1036,13 @@ export default function RecurringTransactions() {
                     {item.is_active && (
                       <button
                         type="button"
-                        onClick={() => toggleBillPaid(item)}
-                        disabled={isActionLoading}
-                        title="Stop due-date notifications for this payment cycle"
+                        onClick={() => markBillPaid(item)}
+                        disabled={isActionLoading || isPaidThisCycle}
+                        title={
+                          isPaidThisCycle
+                            ? "Already marked as paid for this cycle"
+                            : "Stop due-date notifications for this payment cycle"
+                        }
                         style={{
                           flex: "1 1 100%",
                           minHeight: 38,
@@ -1053,7 +1056,7 @@ export default function RecurringTransactions() {
                           color: isPaidThisCycle
                             ? "#16a34a"
                             : "var(--color-ink, #374151)",
-                          cursor: "pointer",
+                          cursor: isPaidThisCycle ? "default" : "pointer",
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1064,7 +1067,7 @@ export default function RecurringTransactions() {
                       >
                         <BadgeCheck size={15} />
                         {isPaidThisCycle
-                          ? "Paid (Alerts Paused)"
+                          ? "Paid (Alerts Stopped)"
                           : "Mark as Paid"}
                       </button>
                     )}
