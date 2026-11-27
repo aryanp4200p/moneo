@@ -161,7 +161,11 @@ export default function DashboardPage() {
 
   const recentTransactions = useMemo(() => {
     return [...selectedMonthTransactions]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .sort((a, b) => {
+        const dateDiff = new Date(b.date) - new Date(a.date);
+        if (dateDiff !== 0) return dateDiff;
+        return Number(b.id || 0) - Number(a.id || 0);
+      })
       .slice(0, 8);
   }, [selectedMonthTransactions]);
 
@@ -238,6 +242,7 @@ export default function DashboardPage() {
     Transport: "🚗",
     Travel: "✈️",
     Entertainment: "🎬",
+    Movies: "🎬",
     Utilities: "💡",
     Bills: "📱",
     Healthcare: "🏥",
@@ -246,6 +251,7 @@ export default function DashboardPage() {
     Cash: "💵",
     Investment: "📈",
     Groceries: "🛒",
+    Income: "💰",
   };
 
   // ============================================================
@@ -281,13 +287,6 @@ export default function DashboardPage() {
       message:
         "There are some financial areas that you should focus on improving.",
     };
-  };
-
-  const getScoreClass = (score) => {
-    if (score >= 80) return "excellent";
-    if (score >= 60) return "good";
-    if (score >= 40) return "fair";
-    return "attention";
   };
 
   // ============================================================
@@ -672,7 +671,7 @@ export default function DashboardPage() {
           <div className="dashboard-two-column bottom-grid">
             {/* RECENT TRANSACTIONS */}
 
-            <div className="dashboard-panel">
+            <div className="dashboard-panel" style={{ minWidth: 0 }}>
               <div className="panel-heading">
                 <div>
                   <h3>Recent Transactions</h3>
@@ -688,49 +687,117 @@ export default function DashboardPage() {
                 <div className="empty-dashboard">No transactions yet.</div>
               ) : (
                 <div className="recent-transactions">
-                  {recentTransactions.map((transaction) => (
-                    <div className="recent-transaction" key={transaction.id}>
-                      <div className="transaction-date">
-                        {formatDate(transaction.date)}
-                      </div>
+                  {recentTransactions.map((transaction) => {
+                    const category = transaction.category || "Uncategorized";
+                    const title =
+                      transaction.merchant?.trim() ||
+                      transaction.note?.trim() ||
+                      category;
+                    const subtitle =
+                      title.toLowerCase() === category.toLowerCase()
+                        ? transaction.type === "income"
+                          ? "Income"
+                          : "Expense"
+                        : category;
 
-                      <div className="transaction-description">
-                        <div className="transaction-icon">
-                          {categoryIcons[transaction.category] || "💳"}
-                        </div>
-
-                        <div>
-                          <strong>
-                            {transaction.merchant ||
-                              transaction.note ||
-                              transaction.category ||
-                              "Transaction"}
-                          </strong>
-
-                          <span>{transaction.category || "Uncategorized"}</span>
-                        </div>
-                      </div>
-
+                    return (
                       <div
-                        className={`transaction-amount ${
-                          transaction.type === "income"
-                            ? "positive"
-                            : "negative"
-                        }`}
+                        className="recent-transaction"
+                        key={transaction.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          minWidth: 0,
+                        }}
                       >
-                        {transaction.type === "income" ? "+" : "-"}
+                        <div
+                          className="transaction-date"
+                          style={{
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {formatDate(transaction.date)}
+                        </div>
 
-                        {formatCurrency(transaction.amount)}
+                        <div
+                          className="transaction-description"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            className="transaction-icon"
+                            style={{ flexShrink: 0 }}
+                          >
+                            {categoryIcons[transaction.category] || "💳"}
+                          </div>
+
+                          <div
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <strong
+                              title={title}
+                              style={{
+                                display: "block",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {title}
+                            </strong>
+
+                            <span
+                              style={{
+                                display: "block",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {subtitle}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`transaction-amount ${
+                            transaction.type === "income"
+                              ? "positive"
+                              : "negative"
+                          }`}
+                          style={{
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                            marginLeft: "auto",
+                            paddingLeft: 8,
+                            textAlign: "right",
+                          }}
+                        >
+                          {transaction.type === "income" ? "+" : "-"}
+                          {formatCurrency(transaction.amount)}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             {/* SPENDING TREND */}
 
-            <div className="dashboard-panel">
+            <div className="dashboard-panel" style={{ minWidth: 0 }}>
               <div className="panel-heading">
                 <div>
                   <h3>Spending Trend</h3>
